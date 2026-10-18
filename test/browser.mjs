@@ -42,7 +42,23 @@ try {
   const page = await browser.newPage({
     viewport: { width: 1440, height: 1100 },
     deviceScaleFactor: 1,
+    serviceWorkers: "block",
   });
+  const thirdPartyRequests = [];
+  async function restrictToApp(context) {
+    await context.route("**/*", (route) => {
+      const url = new URL(route.request().url());
+      if (
+        ["http:", "https:", "ws:", "wss:"].includes(url.protocol) &&
+        url.origin !== new URL(base).origin
+      ) {
+        thirdPartyRequests.push(url.origin);
+        return route.abort("blockedbyclient");
+      }
+      return route.continue();
+    });
+  }
+  await restrictToApp(page.context());
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(base);
@@ -72,7 +88,8 @@ try {
   assert.equal(await page.locator(".invite-link").count(), 2);
   const entry = await page.locator(".invite-link").first().textContent();
   assert.ok(entry.includes("/#invite="));
-  const studentContext = await browser.newContext();
+  const studentContext = await browser.newContext({ serviceWorkers: "block" });
+  await restrictToApp(studentContext);
   const studentPage = await studentContext.newPage();
   await studentPage.goto(entry);
   await studentPage.locator("#auth-form").waitFor();
@@ -202,8 +219,13 @@ try {
   );
   assert.equal(overflow, false, "mobile must not overflow horizontally");
   assert.deepEqual(errors, [], "no uncaught browser errors");
+  assert.deepEqual(
+    thirdPartyRequests,
+    [],
+    "the complete workflow must not request third-party hosts",
+  );
   console.log(
-    "Browser workflow passed: class creation, batch students, individual task publishing, student-only view, autocorrection attributes, autosave/resume, scoring, review, responsive layout.",
+    "Browser workflow passed with all third-party hosts blocked: class creation, batch students, individual task publishing, student-only view, autocorrection attributes, autosave/resume, scoring, review, responsive layout.",
   );
 } finally {
   await browser?.close();

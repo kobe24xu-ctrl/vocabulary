@@ -1,3 +1,5 @@
+import { speakLocalEnglish } from "./speech.js";
+
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const esc = (v) =>
@@ -714,17 +716,14 @@ function parseCSV(text) {
     );
   });
 }
-function speak(text) {
-  if (!("speechSynthesis" in window)) {
-    toast("此浏览器暂不支持朗读。", true);
-    return;
+async function speak(text) {
+  try {
+    await speakLocalEnglish(text, {
+      onError: () => toast("本地朗读不可用，请检查系统离线英文语音包。", true),
+    });
+  } catch (error) {
+    toast(error.message, true);
   }
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "en-GB";
-  u.rate = 0.87;
-  u.onerror = () => toast("朗读不可用，请检查系统英文语音包。", true);
-  speechSynthesis.speak(u);
 }
 async function startTask(tid) {
   const data = await post(`/api/tasks/${tid}/start`);

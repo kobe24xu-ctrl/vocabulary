@@ -1,0 +1,29 @@
+[Unit]
+Description=LexiClass classroom vocabulary server
+After=network.target
+
+[Service]
+Type=simple
+User=lexiclass
+Group=lexiclass
+WorkingDirectory=/opt/lexiclass
+Environment=NODE_ENV=production
+Environment=ALLOW_DEMO=false
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+Environment=DATA_DIR=/var/lib/lexiclass
+EnvironmentFile=/etc/lexiclass/lexiclass.env
+ExecStart=/opt/node24/bin/node /opt/lexiclass/server.mjs
+Restart=on-failure
+RestartSec=3
+StateDirectory=lexiclass
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lexiclass
+
+[Install]
+WantedBy=multi-user.target
