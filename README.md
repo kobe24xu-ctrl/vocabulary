@@ -149,3 +149,9 @@ npm run test:browser
 ## 词库来源
 
 内置 31 个**原创场景示例**，覆盖经济、商科、会计、数学、物理、化学、学术英语与计算机。课程项目名称只用于教师分类，示例没有经过学校官方考纲校准，也不是 UNSW、NCUK 或 UOW 的官方词表或真题。正式教学应由老师依据实际教材、授课单元及授权范围导入内容。
+
+## Cloudflare 免费账户托管
+
+新增 Workers + D1 部署版本。执行 `npm run cf:deploy` 使用云环境中已配置的账户授权创建试用应用和独立数据库。详见 [Cloudflare 部署、正式教师账号与网络限制](docs/cloudflare-deployment.md)。
+
+试用默认开放独立演示空间；正式教师注册需要在该 Worker 中私下设置 `SETUP_KEY`。Cloudflare 的免费地址仍需在中国大陆实际网络中测试，不能据发布成功承诺免 VPN 连接。

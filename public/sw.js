@@ -1,4 +1,4 @@
-const CACHE = "lexiclass-shell-v3";
+const CACHE = "lexiclass-shell-v4";
 const SHELL = [
   "/",
   "/styles.css",
