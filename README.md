@@ -6,7 +6,15 @@
 
 界面截图：[教师工作台](docs/screenshots/teacher.png) · [学生网页登录](docs/screenshots/student-login.png) · [考试链接入口](docs/screenshots/exam-entry.png) · [学生学习空间](docs/screenshots/student.png) · [场景听写](docs/screenshots/dictation.png)。截图均使用虚构示例数据。
 
-## 本地运行
+## 先试用，无需配置服务器
+
+可使用 `npm run demo:build` 生成单文件 `dist/lexiclass-demo.html`，本次聊天也提供已生成的试用文件。该文件内置网页样式、示例词库与本机演示数据，不依赖后端、npm、CDN 或外部 API。下载后可用普通桌面浏览器打开，先从教师工作台发布任务，再点「体验学生端」切换示例学生，答题后回到教师端查看成绩。
+
+**这是本机交互演示，不是 GPT 托管或在线网站。** 记录仅保存在当前浏览器，不能跨电脑共享，不适用于正式考试；请勿录入真实学生信息或真实密码。「重置示例」只清理此演示的数据。真实网站继续使用服务器上的账号、SQLite 数据库和权限控制，演示适配器不会被正式应用加载。
+
+开发者可用 `npm run test:demo` 验证单文件的发布、答题、刷新保存、评分和错题复习。当前托管浏览器禁止 `file://` 导航，因此该检查将生成文件的原文从内存提供给浏览器，关闭网络完成交互验证；真实 Windows/Mac 上双击本地文件打开仍需用户验收。
+
+## 本地运行正式服务
 
 需要 **Node.js 24 或更高版本**。应用只使用 Node.js 内置模块，无第三方运行时依赖。
 
