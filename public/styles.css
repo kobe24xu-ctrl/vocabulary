@@ -13,6 +13,34 @@
     Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Microsoft YaHei", sans-serif;
 }
+.task-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.share-exam {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 17px;
+  margin-bottom: 13px;
+}
+.share-exam h3 {
+  margin-bottom: 5px;
+}
+.share-exam p {
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+.exam-intro {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 30px;
+}
+.exam-intro h2 {
+  font-size: 25px;
+  margin: 12px 0;
+}
 * {
   box-sizing: border-box;
 }

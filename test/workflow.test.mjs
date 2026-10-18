@@ -418,6 +418,145 @@ test("resetting entry revokes old student code and active sessions", async () =>
     students[0].name,
   );
 });
+test("student web accounts consume invitations and keep results and mistakes across devices and password resets", async () => {
+  const student = (
+    await teacher.ok("/api/students", "POST", {
+      name: "网页账号学生",
+      classId: classes[0].id,
+    })
+  ).students[0];
+  const legacy = new Client();
+  await legacy.ok("/api/login", "POST", {
+    name: student.name,
+    invite: student.invite,
+  });
+  const { task } = await teacher.ok(
+    "/api/tasks",
+    "POST",
+    taskInput({ audience: [student.id] }),
+  );
+  const started = await legacy.ok(`/api/tasks/${task.id}/start`, "POST", {});
+  await legacy.ok(`/api/attempts/${started.attempt.id}/submit`, "POST", {
+    answers: { q1: "机会成本", q2: "wrong" },
+  });
+  const activated = await new Client().ok("/api/student/activate", "POST", {
+    name: student.name,
+    invite: student.invite,
+    username: "student-web-01",
+    password: " WebPassword123! ",
+  });
+  assert.equal(activated.user.id, student.id);
+  assert.equal(activated.user.username, "student-web-01");
+  assert.equal((await legacy.call("/api/me")).status, 401);
+  assert.equal(
+    (
+      await new Client().call("/api/login", "POST", {
+        name: student.name,
+        invite: student.invite,
+      })
+    ).status,
+    401,
+    "consumed invitation cannot bypass the password",
+  );
+  const device = new Client();
+  await device.ok("/api/login", "POST", {
+    role: "student",
+    username: "STUDENT-WEB-01",
+    password: " WebPassword123! ",
+  });
+  assert.equal(
+    (await device.ok("/api/tasks")).tasks.find((t) => t.id === task.id).attempt
+      .score,
+    50,
+  );
+  assert.equal((await device.ok("/api/mistakes")).mistakes.length, 1);
+  const roster = (await teacher.ok("/api/students")).students.find(
+    (s) => s.id === student.id,
+  );
+  assert.equal(roster.username, "student-web-01");
+  assert.equal(roster.accountReady, 1);
+  assert.equal(
+    (
+      await new Client().call("/api/login", "POST", {
+        username: "student-web-01",
+        password: "wrong",
+      })
+    ).status,
+    401,
+  );
+  const reset = await teacher.ok(
+    `/api/students/${student.id}/invite`,
+    "POST",
+    {},
+  );
+  assert.equal((await device.call("/api/me")).status, 401);
+  assert.equal(
+    (
+      await device.call("/api/login", "POST", {
+        username: "student-web-01",
+        password: " WebPassword123! ",
+      })
+    ).status,
+    401,
+  );
+  const restored = await device.ok("/api/student/activate", "POST", {
+    name: student.name,
+    invite: reset.invite,
+    username: "student-web-01",
+    password: "NewPassword123!",
+  });
+  assert.equal(restored.user.id, student.id);
+  assert.equal((await device.ok("/api/mistakes")).mistakes.length, 1);
+  assert.equal(
+    (await device.ok("/api/tasks")).tasks.find((t) => t.id === task.id).attempt
+      .score,
+    50,
+  );
+});
+
+test("student activation checks roster identity, password length and username uniqueness", async () => {
+  const student = (
+    await teacher.ok("/api/students", "POST", {
+      name: "账号验证学生",
+      classId: classes[0].id,
+    })
+  ).students[0];
+  const data = {
+    name: student.name,
+    invite: student.invite,
+    username: "student-web-01",
+    password: "WebPassword123!",
+  };
+  const client = new Client();
+  assert.equal(
+    (
+      await client.call("/api/student/activate", "POST", {
+        ...data,
+        name: "其他姓名",
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await client.call("/api/student/activate", "POST", {
+        ...data,
+        password: "short",
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await client.call("/api/student/activate", "POST", data)).status,
+    409,
+  );
+  await client.ok("/api/student/activate", "POST", {
+    ...data,
+    username: "student-web-02",
+  });
+  assert.equal((await client.ok("/api/me")).user.classId, classes[0].id);
+});
+
 test("demonstration data stays in a separate tenant, including role switching", async () => {
   const demo = new Client();
   const login = await demo.ok("/api/demo", "POST", {});

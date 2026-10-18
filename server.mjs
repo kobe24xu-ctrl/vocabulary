@@ -47,6 +47,14 @@ CREATE INDEX IF NOT EXISTS attempts_student ON attempts(student_id);
 const one = (sql, ...p) => db.prepare(sql).get(...p);
 const all = (sql, ...p) => db.prepare(sql).all(...p);
 const run = (sql, ...p) => db.prepare(sql).run(...p);
+// Additive migration: preserve existing students, attempts and mistake records.
+if (
+  !all("PRAGMA table_info(users)").some((column) => column.name === "username")
+)
+  db.exec("ALTER TABLE users ADD COLUMN username TEXT");
+db.exec(
+  "CREATE UNIQUE INDEX IF NOT EXISTS users_username ON users(username) WHERE username IS NOT NULL",
+);
 const hash = (v) => createHash("sha256").update(String(v)).digest("hex");
 const token = () => randomBytes(24).toString("hex");
 const id = () => randomUUID();
@@ -99,6 +107,7 @@ function userInfo(u, session) {
         : one("SELECT name FROM classes WHERE id=?", u.class_id)?.name,
     program: u.program,
     classId: u.class_id,
+    username: u.role === "student" ? u.username : undefined,
     isDemo: !!session?.demo_owner_id,
   };
 }
@@ -619,9 +628,63 @@ async function api(req, res, url) {
       user: newSession(req, res, one("SELECT * FROM users WHERE id=?", uid)),
     };
   }
+  if (path === "/api/student/activate" && method === "POST") {
+    const b = await body(req);
+    const invite = String(b.invite || "")
+      .replace(/\s/g, "")
+      .toUpperCase();
+    limited(req, `activate:${hash(invite)}`);
+    const student = one(
+      "SELECT * FROM users WHERE invite_hash=? AND role='student'",
+      hash(invite),
+    );
+    if (!student || student.name !== String(b.name || "").trim())
+      fail(401, "姓名或学习码不正确，请向老师核对。");
+    if (student.password) fail(409, "账号已开通，请使用账号和密码登录。");
+    const username = required(b.username, "学生账号", 40).toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(username))
+      fail(400, "账号需为 3–40 位英文字母、数字、点、下划线或连字符。");
+    const password = b.password;
+    if (
+      typeof password !== "string" ||
+      password.length < 10 ||
+      password.length > 200 ||
+      !password.trim()
+    )
+      fail(400, "密码需要 10–200 个字符。");
+    if (
+      one(
+        "SELECT id FROM users WHERE username=? AND id<>?",
+        username,
+        student.id,
+      )
+    )
+      fail(409, "该账号已被使用，请选择其他账号。");
+    run(
+      "UPDATE users SET username=?,password=?,invite_hash=NULL WHERE id=?",
+      username,
+      passwordHash(password),
+      student.id,
+    );
+    run("DELETE FROM sessions WHERE user_id=?", student.id);
+    return {
+      user: newSession(
+        req,
+        res,
+        one("SELECT * FROM users WHERE id=?", student.id),
+      ),
+    };
+  }
   if (path === "/api/login" && method === "POST") {
     const b = await body(req);
-    limited(req, `login:${String(b.email || b.invite || "").slice(0, 160)}`);
+    limited(
+      req,
+      `login:${hash(
+        String(b.email || b.username || b.invite || "")
+          .trim()
+          .toLowerCase(),
+      )}`,
+    );
     let u;
     if (b.role === "teacher") {
       u = one(
@@ -632,6 +695,13 @@ async function api(req, res, url) {
       );
       if (!u || !passwordOK(String(b.password || ""), u.password))
         fail(401, "邮箱或密码不正确。");
+    } else if (b.username) {
+      u = one(
+        "SELECT * FROM users WHERE username=? AND role='student'",
+        String(b.username).trim().toLowerCase(),
+      );
+      if (!u || !passwordOK(String(b.password || ""), u.password))
+        fail(401, "学生账号或密码不正确。");
     } else {
       u = one(
         "SELECT * FROM users WHERE invite_hash=? AND role='student'",
@@ -712,7 +782,7 @@ async function api(req, res, url) {
     if (u.role !== "teacher") fail(403, "仅教师可查看名单。");
     return {
       students: all(
-        "SELECT id,name,program,class_id AS classId,created_at FROM users WHERE owner_id=? AND role='student' ORDER BY created_at",
+        "SELECT id,name,program,class_id AS classId,username,password IS NOT NULL AS accountReady,created_at FROM users WHERE owner_id=? AND role='student' ORDER BY created_at",
         u.id,
       ).map((s) => ({
         ...s,
@@ -755,7 +825,11 @@ async function api(req, res, url) {
     )
       fail(404, "未找到学生。");
     const invite = randomBytes(9).toString("hex").toUpperCase();
-    run("UPDATE users SET invite_hash=? WHERE id=?", hash(invite), reset[1]);
+    run(
+      "UPDATE users SET invite_hash=?,password=NULL WHERE id=?",
+      hash(invite),
+      reset[1],
+    );
     run("DELETE FROM sessions WHERE user_id=?", reset[1]);
     return { invite };
   }

@@ -79,7 +79,7 @@ try {
   await page.getByRole("button", { name: "添加学生", exact: true }).click();
   await page
     .locator("#students-form [name=classId]")
-    .selectOption({ label: "NCUK 测试班 · NCUK" });
+    .selectOption({ label: "UNSW 商科 A 班 · UNSW" });
   await page
     .locator("#students-form [name=names]")
     .fill("浏览器学生甲\n浏览器学生乙");
@@ -87,6 +87,7 @@ try {
   await page.getByRole("heading", { name: "学生学习入口已生成" }).waitFor();
   assert.equal(await page.locator(".invite-link").count(), 2);
   const entry = await page.locator(".invite-link").first().textContent();
+  const secondEntry = await page.locator(".invite-link").nth(1).textContent();
   assert.ok(entry.includes("/#invite="));
   const studentContext = await browser.newContext({ serviceWorkers: "block" });
   await restrictToApp(studentContext);
@@ -98,7 +99,16 @@ try {
     0,
   );
   await studentPage.locator("#auth-form [name=name]").fill("浏览器学生甲");
-  await studentPage.getByRole("button", { name: "进入课堂" }).click();
+  await studentPage
+    .locator("#auth-form [name=username]")
+    .fill("browser-student-01");
+  await studentPage
+    .locator("#auth-form [name=password]")
+    .fill("BrowserPassword123!");
+  await studentPage
+    .locator("#auth-form [name=passwordConfirm]")
+    .fill("BrowserPassword123!");
+  await studentPage.getByRole("button", { name: "开通账号并进入" }).click();
   await studentPage
     .getByRole("heading", { name: "我的学习", exact: true })
     .waitFor();
@@ -110,8 +120,21 @@ try {
   await page.locator("#task-form [name=title]").fill("浏览器验证 · 定向发布");
   await page.locator("#task-form [name=repeatDays]").fill("2");
   await page.locator("#task-form [name=audienceMode]").selectOption("selected");
-  await page.locator("#task-students input").first().check();
+  await page
+    .locator("#task-students label")
+    .filter({ hasText: "浏览器学生甲" })
+    .locator("input")
+    .check();
   await page.getByRole("button", { name: "确认发布" }).click();
+  await page
+    .getByRole("heading", { name: "考试已准备好，分享给学生吧" })
+    .waitFor();
+  const examLink = await page.locator(".share-exam input").first().inputValue();
+  const futureLink = await page
+    .locator(".share-exam input")
+    .nth(1)
+    .inputValue();
+  await page.getByRole("button", { name: "完成", exact: true }).click();
   await page
     .getByRole("heading", { name: /浏览器验证 · 定向发布/ })
     .first()
@@ -120,6 +143,115 @@ try {
     await page.getByRole("heading", { name: /浏览器验证 · 定向发布/ }).count(),
     2,
   );
+  const taskId = new URL(examLink).searchParams.get("exam");
+  const webContext = await browser.newContext({ serviceWorkers: "block" });
+  await restrictToApp(webContext);
+  const web = await webContext.newPage();
+  await web.goto(examLink);
+  await web.locator("#auth-form [name=username]").fill("browser-student-01");
+  await web.locator("#auth-form [name=password]").fill("BrowserPassword123!");
+  await web.getByRole("button", { name: "进入课堂" }).click();
+  await web.getByRole("heading", { name: "考试入口", exact: true }).waitFor();
+  assert.equal(
+    await web.locator("[data-action=install]").count(),
+    0,
+    "students never need an installation flow",
+  );
+  const before = await (
+    await page.request.get(`${base}/api/results?task=${taskId}`)
+  ).json();
+  assert.equal(
+    before.results[0].state,
+    "pending",
+    "opening the exam link does not start the timer",
+  );
+  await web.getByRole("button", { name: "我已准备好，开始考试" }).click();
+  const webAnswers = [
+    "机会成本",
+    "scarcity",
+    "需求价格弹性",
+    "equilibrium",
+    "不会",
+    "aggregate demand",
+    "通货膨胀",
+    "fiscal policy",
+  ];
+  for (let i = 0; i < webAnswers.length; i++)
+    await web.locator("#exam-form input[type=text]").nth(i).fill(webAnswers[i]);
+  await web.waitForFunction(
+    () =>
+      document.querySelector("#save-indicator")?.textContent ===
+      "已保存到服务器",
+  );
+  await web.reload();
+  await web.getByRole("button", { name: "继续考试", exact: true }).click();
+  assert.equal(
+    await web.locator("#exam-form [name=q1]").inputValue(),
+    "机会成本",
+  );
+  await web.getByRole("button", { name: "提交本次听写" }).click();
+  await web.getByRole("button", { name: "确认提交", exact: true }).click();
+  await web.locator(".result-number").waitFor();
+  assert.match(await web.locator(".result-number").textContent(), /88/);
+  await web.getByRole("button", { name: "去错题本复习" }).click();
+  await web
+    .getByRole("heading", { name: "externality", exact: true })
+    .waitFor();
+  await webContext.close();
+  const another = await browser.newContext({ serviceWorkers: "block" });
+  await restrictToApp(another);
+  const otherDevice = await another.newPage();
+  await otherDevice.goto(examLink);
+  await otherDevice
+    .locator("#auth-form [name=username]")
+    .fill("browser-student-01");
+  await otherDevice
+    .locator("#auth-form [name=password]")
+    .fill("BrowserPassword123!");
+  await otherDevice.getByRole("button", { name: "进入课堂" }).click();
+  await otherDevice
+    .getByRole("button", { name: /已完成 · 查看 88 分/ })
+    .waitFor();
+  await otherDevice.goto(futureLink);
+  await otherDevice.getByRole("button", { name: "等待考试开放" }).waitFor();
+  assert.equal(
+    await otherDevice
+      .getByRole("button", { name: "等待考试开放" })
+      .isDisabled(),
+    true,
+  );
+  await otherDevice.goto(`${base}/?exam=not-a-valid-exam`);
+  await otherDevice
+    .getByRole("heading", { name: "未找到分配给你的考试" })
+    .waitFor();
+  assert.equal(
+    await otherDevice.locator("[data-action=start-task]").count(),
+    0,
+  );
+  await another.close();
+  const deniedContext = await browser.newContext({ serviceWorkers: "block" });
+  await restrictToApp(deniedContext);
+  const denied = await deniedContext.newPage();
+  const deniedLink = new URL(secondEntry);
+  deniedLink.searchParams.set("exam", taskId);
+  await denied.goto(deniedLink.href);
+  await denied.locator("#auth-form [name=name]").fill("浏览器学生乙");
+  await denied.locator("#auth-form [name=username]").fill("browser-student-02");
+  await denied
+    .locator("#auth-form [name=password]")
+    .fill("BrowserPassword123!");
+  await denied
+    .locator("#auth-form [name=passwordConfirm]")
+    .fill("BrowserPassword123!");
+  await denied.getByRole("button", { name: "开通账号并进入" }).click();
+  await denied.getByRole("heading", { name: "未找到分配给你的考试" }).waitFor();
+  assert.equal(await denied.locator("[data-action=start-task]").count(), 0);
+  await deniedContext.close();
+  await page.locator(`[data-action=task-results][data-id="${taskId}"]`).click();
+  await page.getByRole("heading", { name: "成绩分析", exact: true }).waitFor();
+  const gradeRow = page.locator("tbody tr").filter({ hasText: "浏览器学生甲" });
+  assert.match(await gradeRow.textContent(), /88/);
+  assert.match(await gradeRow.textContent(), /UNSW 商科 A 班/);
   await page.getByRole("button", { name: "体验学生端 →" }).click();
   await page
     .locator("[data-action=demo-student]")
@@ -225,7 +357,7 @@ try {
     "the complete workflow must not request third-party hosts",
   );
   console.log(
-    "Browser workflow passed with all third-party hosts blocked: class creation, batch students, individual task publishing, student-only view, autocorrection attributes, autosave/resume, scoring, review, responsive layout.",
+    "Browser workflow passed with all third-party hosts blocked: class creation, web account activation, shareable exam links and cross-device login, assigned-student access, future exam waiting, teacher class scores, autocorrection attributes, autosave/resume, scoring, review, responsive layout.",
   );
 } finally {
   await browser?.close();

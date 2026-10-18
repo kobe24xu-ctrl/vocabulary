@@ -78,6 +78,7 @@ const state = {
   authTab: "student",
   reminded: new Set(),
   installPrompt: null,
+  requestedExamId: null,
 };
 let modalOpen = false,
   saveTimer,
@@ -200,7 +201,9 @@ function navItems() {
 }
 function shell() {
   const teacher = state.user.role === "teacher";
-  const label = navItems().find((n) => n[0] === state.view)?.[2] || "场景听写";
+  const label =
+    navItems().find((n) => n[0] === state.view)?.[2] ||
+    (state.view === "exam-entry" ? "考试入口" : "场景听写");
   return `<div class="app-shell"><aside class="sidebar">${brand()}<div class="nav-caption">${teacher ? "TEACHING WORKSPACE" : "MY LEARNING SPACE"}</div><nav class="nav" aria-label="主要导航">${navItems()
     .map(
       ([v, i, n, c]) =>
@@ -208,7 +211,7 @@ function shell() {
     )
     .join(
       "",
-    )}</nav><div class="sidebar-spacer"></div><div class="side-note">${icon("spark")}<h4>不止记住单词，更要读懂题目。</h4><p>用真实学科语境，连接词汇与知识。<br>每一次练习，都离理解更近一步。</p></div><div class="side-footer"><div class="avatar">${esc(state.user.name.slice(0, 1))}</div><div><strong>${esc(state.user.name)}</strong><small>${teacher ? "教师工作台" : "学生学习空间"}</small></div><button data-action="logout" title="退出登录" aria-label="退出登录">${icon("logout")}</button></div></aside><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="menu" aria-label="展开导航">${icon("menu")}</button><span>${teacher ? "教师工作台" : "词间课堂"}</span>${icon("chevron")}<strong>${label}</strong></div><div class="top-actions"><span class="today-label">${new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</span><span class="divider"></span><button class="btn btn-light btn-sm" data-action="install">${icon("download")}安装到电脑</button><button class="icon-button" data-action="help" title="使用帮助" aria-label="使用帮助">${icon("help")}</button><span class="avatar">${esc(state.user.name.slice(0, 1))}</span></div></header>${state.user.isDemo ? `<div class="demo-banner">演示空间 · 所有姓名与成绩均为示例，和正式班级隔离。${teacher ? '<button data-action="demo-pick">体验学生端 →</button>' : '<button data-action="demo-teacher">返回教师端 →</button>'}</div>` : ""}<div id="connection-status">${!navigator.onLine ? '<div class="connection-banner">当前离线。测试和提交需要联网，请保持应用打开并恢复连接。</div>' : ""}</div><main class="main ${teacher ? "" : "student-main"}" id="main-view">${content()}</main><footer class="main page-footer"><span>LexiClass 词间课堂 · 让词汇在语境中生长</span><span>${teacher ? "UNSW · NCUK · UOW" : "每一个进步，都值得被记录。"}</span></footer></div>`;
+    )}</nav><div class="sidebar-spacer"></div><div class="side-note">${icon("spark")}<h4>不止记住单词，更要读懂题目。</h4><p>用真实学科语境，连接词汇与知识。<br>每一次练习，都离理解更近一步。</p></div><div class="side-footer"><div class="avatar">${esc(state.user.name.slice(0, 1))}</div><div><strong>${esc(state.user.name)}</strong><small>${teacher ? "教师工作台" : "学生学习空间"}</small></div><button data-action="logout" title="退出登录" aria-label="退出登录">${icon("logout")}</button></div></aside><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="menu" aria-label="展开导航">${icon("menu")}</button><span>${teacher ? "教师工作台" : "词间课堂"}</span>${icon("chevron")}<strong>${label}</strong></div><div class="top-actions"><span class="today-label">${new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</span><span class="divider"></span>${teacher ? `<button class="btn btn-light btn-sm" data-action="install">${icon("download")}教师桌面快捷方式</button>` : '<span class="badge gray">网页学习</span>'}<button class="icon-button" data-action="help" title="使用帮助" aria-label="使用帮助">${icon("help")}</button><span class="avatar">${esc(state.user.name.slice(0, 1))}</span></div></header>${state.user.isDemo ? `<div class="demo-banner">演示空间 · 所有姓名与成绩均为示例，和正式班级隔离。${teacher ? '<button data-action="demo-pick">体验学生端 →</button>' : '<button data-action="demo-teacher">返回教师端 →</button>'}</div>` : ""}<div id="connection-status">${!navigator.onLine ? '<div class="connection-banner">当前离线。测试和提交需要联网，请保持应用打开并恢复连接。</div>' : ""}</div><main class="main ${teacher ? "" : "student-main"}" id="main-view">${content()}</main><footer class="main page-footer"><span>LexiClass 词间课堂 · 让词汇在语境中生长</span><span>${teacher ? "UNSW · NCUK · UOW" : "每一个进步，都值得被记录。"}</span></footer></div>`;
 }
 function heading(title, subtitle, actions = "") {
   return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;
@@ -287,7 +290,7 @@ function tasksView() {
   return `${heading("听写任务", "在真实语境中练习，按班级和学生精准布置。", `<button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}${filters({ classes: true, subject: true, search: true })}<div class="cards-grid">${filteredTasks()
     .map((t) => {
       const [label, color] = statusOf(t);
-      return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(t.program)} · ${esc(nameSubject(t.subject))}<br>${t.classIds.map(clsName).map(esc).join("、")} · ${t.audience === "all" ? "所选班级全体" : `${t.audience.length} 位指定学生`}</p><div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span><span>${esc(modeName(t.mode))}</span></div><p>${icon("clock")} ${date(t.opensAt)} — ${date(t.closesAt)}</p><div class="progress-track" style="width:100%;margin:15px 0"><div class="progress-fill" style="width:${t.studentCount ? (t.submitted / t.studentCount) * 100 : 0}%"></div></div><div class="assignment-bottom"><span>${t.submitted} / ${t.studentCount} 人已提交</span><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">查看成绩 ${icon("arrow")}</button></div></article>`;
+      return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(t.program)} · ${esc(nameSubject(t.subject))}<br>${t.classIds.map(clsName).map(esc).join("、")} · ${t.audience === "all" ? "所选班级全体" : `${t.audience.length} 位指定学生`}</p><div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span><span>${esc(modeName(t.mode))}</span></div><p>${icon("clock")} ${date(t.opensAt)} — ${date(t.closesAt)}</p><div class="progress-track" style="width:100%;margin:15px 0"><div class="progress-fill" style="width:${t.studentCount ? (t.submitted / t.studentCount) * 100 : 0}%"></div></div><div class="assignment-bottom"><span>${t.submitted} / ${t.studentCount} 人已提交</span><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">考试链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">查看成绩 ${icon("arrow")}</button></div></div></article>`;
     })
     .join(
       "",
@@ -306,7 +309,7 @@ function studentsView() {
       (state.filter.classId === "all" || s.classId === state.filter.classId) &&
       s.name.includes(state.filter.search),
   );
-  return `${heading("学生名单", "每一位学生的练习与进步，都有迹可循。", `<button class="btn btn-light" data-action="export-students">${icon("download")}导出名单</button><button class="btn btn-primary" data-action="add-students">${icon("plus")}添加学生</button>`)}${filters({ classes: true, search: true })}<div class="panel"><div class="panel-header"><h2>班级学生 <small class="muted">&nbsp; ${rows.length} 位</small></h2><span class="muted" style="font-size:10px">学生通过专属入口，仅填写姓名登录</span></div><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>课程项目 / 班级</th><th>完成听写</th><th>平均成绩</th><th>待复习错词</th><th>学习入口</th></tr></thead><tbody>${rows.map((s) => `<tr><td><div class="person"><span class="avatar">${esc(s.name.slice(-1))}</span><strong>${esc(s.name)}</strong></div></td><td>${esc(clsName(s.classId))}<div class="table-secondary">${esc(s.program)}</div></td><td>${s.attempts} 次</td><td><span class="score ${s.average !== null && s.average < 60 ? "low" : ""}">${s.average ?? "—"}</span>${s.average !== null ? ' <small class="muted">分</small>' : ""}</td><td>${s.mistakes ? badge(`${s.mistakes} 个`, "gold") : '<span class="muted">暂无</span>'}</td><td><button class="btn btn-light btn-sm" data-action="student-invite" data-id="${s.id}">${icon("repeat")}重置并获取入口</button></td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("这里还没有学生", "先创建班级，再批量添加学生姓名。") : ""}</div>`;
+  return `${heading("学生名单", "每一位学生的练习与进步，都有迹可循。", `<button class="btn btn-light" data-action="export-students">${icon("download")}导出名单</button><button class="btn btn-primary" data-action="add-students">${icon("plus")}添加学生</button>`)}${filters({ classes: true, search: true })}<div class="panel"><div class="panel-header"><h2>班级学生 <small class="muted">&nbsp; ${rows.length} 位</small></h2><span class="muted" style="font-size:10px">学生通过账号登录，考试与错题跨设备保存</span></div><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>网页账号</th><th>课程项目 / 班级</th><th>完成听写</th><th>平均成绩</th><th>待复习错词</th><th>学习入口</th></tr></thead><tbody>${rows.map((s) => `<tr><td><div class="person"><span class="avatar">${esc(s.name.slice(-1))}</span><strong>${esc(s.name)}</strong></div></td><td>${esc(s.username || "尚未开通")}<div class="table-secondary">${s.accountReady ? "已开通" : "等待学生开通"}</div></td><td>${esc(clsName(s.classId))}<div class="table-secondary">${esc(s.program)}</div></td><td>${s.attempts} 次</td><td><span class="score ${s.average !== null && s.average < 60 ? "low" : ""}">${s.average ?? "—"}</span>${s.average !== null ? ' <small class="muted">分</small>' : ""}</td><td>${s.mistakes ? badge(`${s.mistakes} 个`, "gold") : '<span class="muted">暂无</span>'}</td><td><button class="btn btn-light btn-sm" data-action="student-invite" data-id="${s.id}">${icon("repeat")}重置并获取入口</button></td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("这里还没有学生", "先创建班级，再批量添加学生姓名。") : ""}</div>`;
 }
 function wordsView() {
   const words = state.words.filter(
@@ -406,6 +409,8 @@ function resultView() {
 function content() {
   if (state.attempt) return examView();
   if (state.examResult) return resultView();
+  if (state.user.role === "student" && state.view === "exam-entry")
+    return examEntryView();
   if (state.user.role === "student")
     return state.view === "dashboard"
       ? studentDashboard()
@@ -500,8 +505,49 @@ function field(
 function renderAuth() {
   const tab = state.authTab,
     invite = localStorage.getItem("lexiclass-student-entry");
+  const activating = tab === "activate";
+  const title =
+    tab === "setup"
+      ? "建立你的教学空间"
+      : tab === "teacher"
+        ? "回到你的课堂"
+        : activating
+          ? "开通你的学习账号"
+          : "登录你的学习账号";
+  let fields;
+  if (tab === "student")
+    fields = `${field("学生账号", "username", "text", "例如：chen2026001")}${field("登录密码", "password", "password", "请输入你的密码")}<p class="privacy-note" style="margin:0 0 18px">忘记密码请联系老师重置开通码，历史成绩和错题会保留。</p>`;
+  else if (activating)
+    fields = `${field("老师登记的姓名", "name", "text", "请与老师名单保持一致")}${invite ? '<div class="alert success">已识别老师提供的个人开通码。</div>' : field("老师提供的学习码", "invite", "text", "请勿使用其他同学的学习码")}${field("设置学生账号", "username", "text", "3–40 位英文、数字、点或下划线")}${field("设置密码（至少 10 位）", "password", "password", "用于以后在任何电脑登录")}${field("再次输入密码", "passwordConfirm", "password", "请再次输入密码")}`;
+  else if (tab === "teacher")
+    fields = `${field("教师邮箱", "email", "email", "name@school.edu")}${field("登录密码", "password", "password", "请输入密码")}`;
+  else
+    fields = `${field("设置密钥", "setupKey", "password", "从服务器 data/setup-key 获取")}${field("教师姓名", "name", "text", "例如：林老师")}${field("教师邮箱", "email", "email", "name@school.edu")}${field("设置密码（至少 10 位）", "password", "password", "请设置强密码")}${field("首个班级名称（UNSW，可稍后添加其他项目）", "className", "text", "例如：UNSW 商科 A 班")}`;
   $("#app").innerHTML =
-    `<div class="login-layout"><section class="login-art">${brand()}<div><div class="eyebrow" style="color:#95b581;margin-top:45px">WORDS MEET THE REAL WORLD</div><h1>学会一个词，<br>读懂<em>更大的世界。</em></h1><p>从经济学的第一道题，到专业课的每一次进步。<br>让词汇在真实语境里，被理解、被记住。</p>${art()}</div><footer>UNSW · NCUK · UOW &nbsp; / &nbsp; YOUR CLASSROOM, CONNECTED.</footer></section><section class="login-form-area"><div class="login-box"><div class="login-badge">${icon("leaf")} 欢迎来到词间课堂</div><h2>${tab === "setup" ? "建立你的教学空间" : tab === "teacher" ? "回到你的课堂" : "开始今天的学习"}</h2><p>${tab === "setup" ? "由服务器管理员创建首位教师账号。" : tab === "teacher" ? "登录后管理所有项目、班级和学生。" : "填写姓名，查看老师为你安排的练习。"}</p>${tab !== "setup" ? `<div class="tabs"><button class="${tab === "student" ? "active" : ""}" data-action="auth-tab" data-tab="student">学生入口</button><button class="${tab === "teacher" ? "active" : ""}" data-action="auth-tab" data-tab="teacher">教师登录</button></div>` : ""}<form id="auth-form"><input type="hidden" name="role" value="${tab}">${tab === "student" ? `${field("你的姓名", "name", "text", "请填写老师名单中的姓名")} ${invite ? '<div class="alert success">已连接老师提供的专属学习入口。</div>' : `${field("首次使用：老师提供的学习码", "invite", "text", "或直接打开老师发给你的专属链接")}<p class="privacy-note" style="margin-top:-8px;margin-bottom:18px">学习码用于识别你的个人记录。绑定这台电脑后，后续仅需填写姓名。</p>`}` : tab === "teacher" ? `${field("教师邮箱", "email", "email", "name@school.edu")}${field("登录密码", "password", "password", "请输入密码")}` : `${field("设置密钥", "setupKey", "password", "从服务器 data/setup-key 获取")}${field("教师姓名", "name", "text", "例如：林老师")}${field("教师邮箱", "email", "email", "name@school.edu")}${field("设置密码（至少 10 位）", "password", "password", "请设置强密码")}${field("首个班级名称（UNSW，可稍后添加其他项目）", "className", "text", "例如：UNSW 商科 A 班")}`}<button type="submit" class="btn btn-primary">${tab === "setup" ? "创建教学空间" : "进入课堂"} ${icon("arrow")}</button></form>${invite && tab === "student" ? '<button class="btn btn-quiet" data-action="clear-entry" style="margin-top:10px">切换学习入口</button>' : ""}<div class="login-bottom">${state.config?.demoAvailable ? '<p>想先看看课堂是什么样？</p><button data-action="demo-login">体验教师与学生演示 →</button>' : ""}${state.config?.setupRequired && tab !== "setup" ? '<p><button data-action="auth-tab" data-tab="setup">首次部署 · 建立教师账号</button></p>' : ""}${tab === "setup" ? '<button data-action="auth-tab" data-tab="teacher">返回登录</button>' : ""}</div><p class="privacy-note">${icon("shield")} 请使用自己的学习入口，妥善保管个人学习码。<br>课程与班级由老师设置，学生无需选择项目。</p></div></section></div>`;
+    `<div class="login-layout"><section class="login-art">${brand()}<div><div class="eyebrow" style="color:#95b581;margin-top:45px">WORDS MEET THE REAL WORLD</div><h1>学会一个词，<br>读懂<em>更大的世界。</em></h1><p>从经济学的第一道题，到专业课的每一次进步。<br>打开网页，走进你的课堂。</p>${art()}</div><footer>UNSW · NCUK · UOW &nbsp; / &nbsp; YOUR CLASSROOM, CONNECTED.</footer></section><section class="login-form-area"><div class="login-box"><div class="login-badge">${icon("leaf")} 网页直接学习 · 无需安装</div><h2>${title}</h2><p>${tab === "setup" ? "由服务器管理员创建首位教师账号。" : tab === "teacher" ? "登录后管理所有项目、班级和学生。" : activating ? "只需首次开通，班级和项目由老师分配。" : "每次的成绩、错题与进步，都保存在你的账号中。"}</p>${state.requestedExamId ? '<div class="alert">你正在打开老师分享的考试。登录后将直接进入考试说明页，点击开始才计时。</div>' : ""}${tab !== "setup" ? `<div class="tabs"><button class="${tab !== "teacher" ? "active" : ""}" data-action="auth-tab" data-tab="student">学生账号</button><button class="${tab === "teacher" ? "active" : ""}" data-action="auth-tab" data-tab="teacher">教师登录</button></div>` : ""}<form id="auth-form"><input type="hidden" name="role" value="${tab}">${fields}<button type="submit" class="btn btn-primary">${tab === "setup" ? "创建教学空间" : activating ? "开通账号并进入" : "进入课堂"} ${icon("arrow")}</button></form>${tab === "student" ? '<button class="btn btn-quiet" style="margin-top:10px" data-action="auth-tab" data-tab="activate">首次使用？用老师的学习码开通账号 →</button>' : ""}${activating ? '<button class="btn btn-quiet" style="margin-top:10px" data-action="auth-tab" data-tab="student">已有账号，直接登录 →</button>' : ""}<div class="login-bottom">${state.config?.demoAvailable ? '<p>想先看看课堂是什么样？</p><button data-action="demo-login">体验教师与学生演示 →</button>' : ""}${state.config?.setupRequired && tab !== "setup" ? '<p><button data-action="auth-tab" data-tab="setup">首次部署 · 建立教师账号</button></p>' : ""}${tab === "setup" ? '<button data-action="auth-tab" data-tab="teacher">返回登录</button>' : ""}</div><p class="privacy-note">${icon("shield")} 学生只需浏览器，无需安装客户端。请妥善保管账号与密码。<br>课程与班级由老师设置，历史成绩和错题跟随账号保存。</p></div></section></div>`;
+}
+function examUrl(taskId) {
+  const url = new URL("/", location.origin);
+  url.searchParams.set("exam", taskId);
+  return url.href;
+}
+function shareExams(tasks) {
+  modal(
+    "考试已准备好，分享给学生吧",
+    "考试链接可发班级群；学生登录自己的账号后答题，无需安装。",
+    `<div class="alert">仅已分配的班级或学生可以参加；学生身份由自己的账号确认，转发链接不会扩大考试范围。首次使用的学生需先用老师私发的学习码开通账号。</div>${tasks.map((t) => `<div class="share-exam"><h3>${esc(t.title)}</h3><p class="muted">${date(t.opensAt)} 开始 · ${t.duration} 分钟 · ${t.questionCount} 题</p><label class="form-field"><span>考试链接</span><input readonly id="exam-link-${t.id}" value="${esc(examUrl(t.id))}"></label><button class="btn btn-light btn-sm" data-action="copy-exam" data-id="${t.id}">${icon("clipboard")}复制考试链接</button></div>`).join("")}`,
+    `<button class="btn btn-primary" data-action="close-modal">完成</button>`,
+  );
+}
+function openRequestedExam() {
+  if (!state.requestedExamId) return;
+  state.view = state.user.role === "student" ? "exam-entry" : "tasks";
+}
+function examEntryView() {
+  const t = state.tasks.find((t) => t.id === state.requestedExamId);
+  if (!t)
+    return `${heading("考试入口", "使用自己的学生账号参加老师安排的考试。")}${empty("未找到分配给你的考试", "请核对当前账号是否属于老师指定的班级，或联系老师确认链接。", `<button class="btn btn-light" data-action="nav" data-view="dashboard">返回我的学习</button>`)}`;
+  return `<div class="exam-layout">${heading("考试入口", "无需安装，准备好后即可在网页中开始。")}<div class="exam-intro"><span class="eyebrow">YOUR CLASSROOM, CONNECTED</span><h2>${esc(t.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p><div class="detail-grid"><div><strong>${t.questionCount}</strong><small>道场景题</small></div><div><strong>${t.duration}</strong><small>分钟限时</small></div><div><strong>${esc(nameSubject(t.subject))}</strong><small>${esc(modeName(t.mode))}</small></div></div><p class="muted">开放时间：${date(t.opensAt, true)}<br>截止时间：${date(t.closesAt, true)}</p><div class="alert" style="margin-top:20px">开始后计时不可暂停，刷新可继续；到时按已保存答案自动交卷。成绩、历史记录和错题保存在你自己的账号中。</div>${t.attempt?.submittedAt ? `<button class="btn btn-primary" data-action="student-result" data-id="${t.id}">已完成 · 查看 ${t.attempt.score} 分的答题结果 ${icon("arrow")}</button>` : `<button class="btn btn-primary" data-action="start-task" data-id="${t.id}" ${t.opensAt > now() || t.closesAt <= now() ? "disabled" : ""}>${t.opensAt > now() ? "等待考试开放" : t.closesAt <= now() ? "考试已截止" : t.attempt ? "继续考试" : "我已准备好，开始考试"} ${icon("arrow")}</button>`}<button class="btn btn-quiet" data-action="nav" data-view="dashboard">返回我的学习</button></div></div>`;
 }
 function createTask() {
   if (!state.classes.length) {
@@ -605,7 +651,7 @@ function addStudents() {
   modal(
     "添加班级学生",
     "可一次录入多个姓名，每位学生会获得独立学习入口。",
-    `<form id="students-form"><label class="form-field"><span>加入班级</span><select name="classId">${state.classes.map((c) => option(c.id, `${c.name} · ${programShort(c.program)}`, state.filter.classId)).join("")}</select></label><label class="form-field"><span>学生姓名 · 每行一位</span><textarea name="names" rows="7" placeholder="陈思远\n林雨桐\n王子涵" required></textarea><small>同一班级内姓名需唯一；同名学生请加上学号，例如「张明 02」。</small></label><div class="alert">添加成功后，请保存并私下分发个人入口。学生第一次通过专属链接进入，此后只需填写姓名。</div></form>`,
+    `<form id="students-form"><label class="form-field"><span>加入班级</span><select name="classId">${state.classes.map((c) => option(c.id, `${c.name} · ${programShort(c.program)}`, state.filter.classId)).join("")}</select></label><label class="form-field"><span>学生姓名 · 每行一位</span><textarea name="names" rows="7" placeholder="陈思远\n林雨桐\n王子涵" required></textarea><small>同一班级内姓名需唯一；同名学生请加上学号，例如「张明 02」。</small></label><div class="alert">添加成功后，请保存并私下分发个人开通入口。学生通过个人链接首次开通账号，以后使用账号密码登录。考试链接可以单独发给班级。</div></form>`,
     `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="students-form">添加并生成入口</button>`,
   );
 }
@@ -615,7 +661,7 @@ function invitesModal(students) {
   modal(
     "学生学习入口已生成",
     "入口包含个人学习凭证，请分别发送给对应学生，不要发到公开群。",
-    `<div class="alert">学习码只在生成或重置时展示。可以下载后单独分发；重置入口会使旧入口和旧登录状态失效。</div>${students.map((s) => `<div style="margin-bottom:18px"><strong>${esc(s.name)}</strong> <small class="muted">学习码：${esc(s.invite)}</small><span class="invite-link">${esc(`${location.origin}/#invite=${s.invite}`)}</span></div>`).join("")}`,
+    `<div class="alert">学习码仅用于首次开通或账号重置，开通成功后即失效。请私下分发；考试链接可以发到班级群。</div>${students.map((s) => `<div style="margin-bottom:18px"><strong>${esc(s.name)}</strong> <small class="muted">学习码：${esc(s.invite)}</small><span class="invite-link">${esc(`${location.origin}/#invite=${s.invite}`)}</span></div>`).join("")}`,
     `<button class="btn btn-light" data-action="download-invites">${icon("download")}保存入口 CSV</button><button class="btn btn-primary" data-action="close-modal">已妥善保存</button>`,
   );
 }
@@ -847,6 +893,9 @@ async function navigate(view) {
     return;
   }
   state.examResult = null;
+  state.requestedExamId = null;
+  sessionStorage.removeItem("lexiclass-exam");
+  history.replaceState(null, "", location.pathname);
   state.view = view;
   state.filter = {
     program: "all",
@@ -898,10 +947,25 @@ document.addEventListener("click", async (e) => {
       }
       await post("/api/logout");
       state.user = null;
+      state.authTab = "student";
       state.attempt = null;
       state.examResult = null;
       closeModal();
       render();
+      return;
+    }
+    if (action === "task-share")
+      return shareExams([state.tasks.find((t) => t.id === b.dataset.id)]);
+    if (action === "copy-exam") {
+      try {
+        await navigator.clipboard.writeText(examUrl(b.dataset.id));
+        toast("考试链接已复制，可发到班级群。");
+      } catch {
+        const input = $(`#exam-link-${b.dataset.id}`);
+        input?.focus();
+        input?.select();
+        toast("请复制已选中的考试链接。");
+      }
       return;
     }
     if (action === "create-task") return createTask();
@@ -965,7 +1029,7 @@ document.addEventListener("click", async (e) => {
       modal(
         "重置个人学习入口",
         `${s.name} · ${clsName(s.classId)}`,
-        `<div class="alert">重置后该学生当前登录会退出，旧学习码和旧入口立即失效。请确认学生没有正在进行的测试，并将新入口私下交给本人。</div>`,
+        `<div class="alert">重置后该学生当前登录会退出，旧密码、学习码和旧入口立即失效。学生需用新开通码重新设置密码，历史成绩和错题保留。请确认学生没有正在进行的测试，并将新入口私下交给本人。</div>`,
         `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" data-action="confirm-reset-invite" data-id="${s.id}">重置并生成新入口</button>`,
       );
       return;
@@ -1184,7 +1248,7 @@ document.addEventListener("click", async (e) => {
       modal(
         "让每一次听写更有效",
         "词间课堂使用说明",
-        `<ol class="install-steps">${state.user.role === "teacher" ? "<li>按 UNSW / NCUK / UOW 创建班级，批量添加姓名。</li><li>将每位学生的专属入口私下发给本人。</li><li>添加或导入学科词汇、双语场景句与可接受答案。</li><li>发布任务时选择项目、科目、班级或个人，设置时间。</li><li>在成绩分析里按班级查看姓名、分数和逐题答案，导出 CSV。</li>" : "<li>在自己的专属入口填写老师登记的姓名。</li><li>在开放时间内开始测试；开始后计时持续进行。</li><li>输入答案会自动保存，提交后查看成绩与错题。</li><li>按错题本提示反复复习；老师发布的科目无需自行选择。</li>"}</ol><div class="alert" style="margin-top:18px">答题框已请求关闭浏览器纠错。系统或输入法的自动纠正需在电脑设置中另行关闭；此应用不能强制更改系统输入法。联网异常时请保持答题页打开，确认保存状态。</div><p class="privacy-note">内置词库为原创教学示例，不是官方课程词表。未接入官方考纲，也未使用 AI 模糊判分；译文按参考答案和教师提供的可接受答案匹配。</p>`,
+        `<ol class="install-steps">${state.user.role === "teacher" ? "<li>按 UNSW / NCUK / UOW 创建班级，批量添加姓名。</li><li>将每位学生的个人开通入口私下发给本人，首次设置网页账号和密码。</li><li>添加或导入学科词汇、双语场景句与可接受答案。</li><li>发布任务时选择项目、科目、班级或个人，设置时间，复制考试链接发到班级群。</li><li>在成绩分析里按班级查看姓名、分数和逐题答案，导出 CSV。</li>" : "<li>首次用老师的学习码开通账号；之后直接在网页中用账号密码登录。</li><li>打开老师发来的考试链接，登录后点击开始，不需要安装客户端。</li><li>在开放时间内开始测试；开始后计时持续进行。</li><li>输入答案会自动保存，提交后查看成绩与错题。</li><li>按错题本提示反复复习；老师发布的科目无需自行选择。</li>"}</ol><div class="alert" style="margin-top:18px">答题框已请求关闭浏览器纠错。系统或输入法的自动纠正需在电脑设置中另行关闭；此应用不能强制更改系统输入法。联网异常时请保持答题页打开，确认保存状态。</div><p class="privacy-note">内置词库为原创教学示例，不是官方课程词表。未接入官方考纲，也未使用 AI 模糊判分；译文按参考答案和教师提供的可接受答案匹配。</p>`,
       );
   } catch (error) {
     toast(error.message || "操作失败，请重试。", true);
@@ -1202,22 +1266,30 @@ document.addEventListener("submit", async (e) => {
   if (submit) submit.disabled = true;
   try {
     if (form.id === "auth-form") {
-      let payload = data;
-      const stored = localStorage.getItem("lexiclass-student-entry");
-      if (data.role === "student")
-        payload = { ...data, invite: stored || data.invite };
+      const activating = data.role === "activate";
+      if (activating && data.password !== data.passwordConfirm)
+        throw new Error("两次输入的密码不一致。");
+      const payload = activating
+        ? {
+            ...data,
+            invite:
+              localStorage.getItem("lexiclass-student-entry") || data.invite,
+          }
+        : data;
       const r = await post(
-        data.role === "setup" ? "/api/setup" : "/api/login",
+        data.role === "setup"
+          ? "/api/setup"
+          : activating
+            ? "/api/student/activate"
+            : "/api/login",
         payload,
       );
-      if (data.role === "student" && !stored)
-        localStorage.setItem(
-          "lexiclass-student-entry",
-          String(data.invite).replace(/\s/g, "").toUpperCase(),
-        );
+      if (activating) localStorage.removeItem("lexiclass-student-entry");
       state.user = r.user;
+      state.authTab = "student";
       state.view = "dashboard";
       await load();
+      openRequestedExam();
       render();
     }
     if (form.id === "class-form") {
@@ -1268,12 +1340,13 @@ document.addEventListener("submit", async (e) => {
           closesAt: end.toISOString(),
         };
       });
-      await post("/api/tasks/batch", { tasks });
+      const published = await post("/api/tasks/batch", { tasks });
       closeModal();
       await load();
       state.view = "tasks";
       render();
-      toast("听写任务已发布，学生将在设定时间看到测试。");
+      shareExams(published.tasks);
+      toast("考试已发布，复制链接即可发给学生。");
     }
     if (form.id === "word-form") {
       await post("/api/words", {
@@ -1449,13 +1522,30 @@ setInterval(async () => {
 }, 30000);
 async function init() {
   try {
+    const query = new URLSearchParams(location.search),
+      examId = query.get("exam");
+    if (query.has("exam")) {
+      sessionStorage.setItem(
+        "lexiclass-exam",
+        examId && /^[a-f0-9-]{36}$/i.test(examId) ? examId : "invalid-link",
+      );
+    }
+    state.requestedExamId = sessionStorage.getItem("lexiclass-exam");
     const params = new URLSearchParams(location.hash.slice(1)),
       entry =
         params.get("invite") ||
         new URLSearchParams(location.search).get("invite");
     if (entry) {
       localStorage.setItem("lexiclass-student-entry", entry.toUpperCase());
-      history.replaceState(null, "", location.pathname);
+      state.authTab = "activate";
+      history.replaceState(
+        null,
+        "",
+        location.pathname +
+          (state.requestedExamId
+            ? `?exam=${encodeURIComponent(state.requestedExamId)}`
+            : ""),
+      );
     }
     state.config = await api("/api/config");
     try {
@@ -1464,7 +1554,10 @@ async function init() {
     } catch (e) {
       if (e.status !== 401) throw e;
     }
-    if (state.user) await load();
+    if (state.user) {
+      await load();
+      openRequestedExam();
+    }
     render();
     if ("serviceWorker" in navigator)
       navigator.serviceWorker.register("/sw.js").catch(() => {});
