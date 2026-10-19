@@ -191,6 +191,7 @@ function navItems() {
           ).length,
         ],
         ["history", "chart", "历史成绩"],
+        ["account", "shield", "账号设置"],
         [
           "review",
           "repeat",
@@ -211,7 +212,7 @@ function shell() {
     )
     .join(
       "",
-    )}</nav><div class="sidebar-spacer"></div><div class="side-note">${icon("spark")}<h4>不止记住单词，更要读懂题目。</h4><p>用真实学科语境，连接词汇与知识。<br>每一次练习，都离理解更近一步。</p></div><div class="side-footer"><div class="avatar">${esc(state.user.name.slice(0, 1))}</div><div><strong>${esc(state.user.name)}</strong><small>${teacher ? "Master 管理台" : "学生学习空间"}</small></div><button data-action="logout" title="退出登录" aria-label="退出登录">${icon("logout")}</button></div></aside><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="menu" aria-label="展开导航">${icon("menu")}</button><span>${teacher ? "Master 管理台" : "词间课堂"}</span>${icon("chevron")}<strong>${label}</strong></div><div class="top-actions"><span class="today-label">${new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</span><span class="divider"></span>${teacher ? `<button class="btn btn-light btn-sm" data-action="install">${icon("download")}教师桌面快捷方式</button>` : '<span class="badge gray">网页学习</span>'}<button class="icon-button" data-action="help" title="使用帮助" aria-label="使用帮助">${icon("help")}</button><span class="avatar">${esc(state.user.name.slice(0, 1))}</span></div></header>${state.user.isDemo ? `<div class="demo-banner">演示空间 · 所有姓名与成绩均为示例，和正式班级隔离。${teacher ? '<button data-action="demo-pick">体验学生端 →</button>' : '<button data-action="demo-teacher">返回教师端 →</button>'}</div>` : ""}<div id="connection-status">${!navigator.onLine ? '<div class="connection-banner">当前离线。测试和提交需要联网，请保持应用打开并恢复连接。</div>' : ""}</div><main class="main ${teacher ? "" : "student-main"}" id="main-view">${content()}</main><footer class="main page-footer"><span>LexiClass 词间课堂 · 让词汇在语境中生长</span><span>${teacher ? "UNSW · NCUK · UOW" : "每一个进步，都值得被记录。"}</span></footer></div>`;
+    )}</nav><div class="sidebar-spacer"></div><div class="side-note">${icon("spark")}<h4>不止记住单词，更要读懂题目。</h4><p>用真实学科语境，连接词汇与知识。<br>每一次练习，都离理解更近一步。</p></div><div class="side-footer"><div class="avatar">${esc(state.user.name.slice(0, 1))}</div><div><strong>${esc(state.user.name)}</strong><small>${teacher ? "Master 管理台" : "学生学习空间"}</small></div><button data-action="logout" title="退出登录" aria-label="退出登录">${icon("logout")}</button></div></aside><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="menu" aria-label="展开导航">${icon("menu")}</button><span>${teacher ? "Master 管理台" : "词间课堂"}</span>${icon("chevron")}<strong>${label}</strong></div><div class="top-actions"><span class="today-label">${new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</span><span class="divider"></span>${teacher ? `<button class="btn btn-light btn-sm" data-action="install">${icon("download")}教师桌面快捷方式</button>` : '<span class="badge gray">网页学习</span>'}<button class="icon-button" data-action="help" title="使用帮助" aria-label="使用帮助">${icon("help")}</button><span class="avatar">${esc(state.user.name.slice(0, 1))}</span></div></header>${state.user.isDemo ? `<div class="demo-banner">演示空间 · 所有姓名与成绩均为示例，和正式班级隔离。${teacher ? '<button data-action="demo-pick">体验学生端 →</button>' : '<button data-action="demo-teacher">返回教师端 →</button>'}</div>` : ""}${state.user.role === "student" && state.user.initialPassword ? '<div class="demo-banner">账号已由老师开通，你可以设置自己的登录密码。<button data-action="nav" data-view="account">修改密码 →</button></div>' : ""}<div id="connection-status">${!navigator.onLine ? '<div class="connection-banner">当前离线。测试和提交需要联网，请保持应用打开并恢复连接。</div>' : ""}</div><main class="main ${teacher ? "" : "student-main"}" id="main-view">${content()}</main><footer class="main page-footer"><span>LexiClass 词间课堂 · 让词汇在语境中生长</span><span>${teacher ? "UNSW · NCUK · UOW" : "每一个进步，都值得被记录。"}</span></footer></div>`;
 }
 function heading(title, subtitle, actions = "") {
   return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;
@@ -223,7 +224,7 @@ function classCards(classes = state.classes) {
   return classes
     .map(
       (c) =>
-        `<div class="class-card clickable" data-action="class-detail" data-id="${c.id}" tabindex="0" role="button"><div class="program-label">${esc(programShort(c.program))} FOUNDATION</div><h3>${esc(c.name)}</h3><p>${esc(c.program)}</p><div class="class-card-bottom"><div class="mini-avatars">${state.students
+        `<div class="class-card clickable" data-action="class-detail" data-id="${c.id}" tabindex="0" role="button"><div class="program-label">${esc(programShort(c.program))} FOUNDATION</div><h3>${esc(c.name)}</h3><p>${esc(c.program)}</p><p class="muted">${(c.courses || []).map((course) => esc(course.title)).join(" · ") || "科目尚未配置"}</p><button class="btn btn-light btn-sm" data-action="class-courses" data-id="${c.id}">课程内容</button><div class="class-card-bottom"><div class="mini-avatars">${state.students
           .filter((s) => s.classId === c.id)
           .slice(0, 4)
           .map((s) => `<span>${esc(s.name.slice(-1))}</span>`)
@@ -406,9 +407,57 @@ function resultView() {
     r = a.result;
   return `<div class="exam-layout"><div class="result-hero"><span class="eyebrow">PRACTICE COMPLETE</span><h2>${esc(state.user.name)}，本次听写已提交。</h2><div class="result-number mono">${a.score}<small>分</small></div><p>${esc(task.title)} · 答对 ${r.correct} / ${r.total} 题</p><p>${date(a.submittedAt, true)}${a.timedOut ? " · 到时自动提交" : ""}</p><div class="result-actions"><button class="btn btn-light" data-action="finish-result">返回我的学习</button><button class="btn btn-primary" data-action="result-review">${icon("repeat")}去错题本复习</button></div></div>${resultBody(r)}</div>`;
 }
+function accountView() {
+  return `${heading("账号设置", "姓名账号由老师登记，密码可以由你自己修改。")}
+    <section class="panel" style="max-width:680px;padding:28px">
+      ${state.user.initialPassword ? '<div class="alert">你的账号使用老师设置的初始密码，可以在这里更换为自己的密码。</div>' : ""}
+      <form id="password-form"><label class="form-field"><span>学生账号</span><input value="${esc(state.user.username || state.user.name)}" readonly></label>
+      <label class="form-field"><span>当前密码</span><input type="password" name="currentPassword" autocomplete="current-password" maxlength="200" required></label>
+      <label class="form-field"><span>新密码 · 至少 10 位</span><input type="password" name="newPassword" autocomplete="new-password" minlength="10" maxlength="200" required></label>
+      <label class="form-field"><span>再次输入新密码</span><input type="password" name="passwordConfirm" autocomplete="new-password" minlength="10" maxlength="200" required></label>
+      <p class="muted">修改后其他设备需要重新登录，历史成绩和错题会保留。</p>
+      <button class="btn btn-primary" type="submit">保存新密码</button></form>
+    </section>`;
+}
+function classCourses(classId, editing = false) {
+  const cls = state.classes.find((c) => c.id === classId);
+  if (!cls) return;
+  const courses = cls.courses || [];
+  if (!editing) {
+    modal(
+      `${cls.name} · 课程内容`,
+      "按班级维护实际科目和当前学习内容。",
+      courses.length
+        ? courses
+            .map(
+              (c) =>
+                `<section class="form-section"><h3>${esc(c.title)}</h3><p style="white-space:pre-wrap;font-weight:400">${esc(c.content || "本次反馈表未填写课程内容，可由 master 补充。")}</p>${c.source ? `<small class="muted">${esc(c.source)}</small>` : ""}</section>`,
+            )
+            .join("")
+        : '<div class="alert">尚未设置班级课程，发布时可选择全部科目。</div>',
+      `<button class="btn btn-light" data-action="close-modal">关闭</button><button class="btn btn-primary" data-action="edit-class-courses" data-id="${cls.id}">编辑班级课程</button>`,
+      true,
+    );
+    return;
+  }
+  modal(
+    `${cls.name} · 编辑课程`,
+    "勾选实际开设的科目，并填写对应的课程内容。",
+    `<form id="courses-form"><input type="hidden" name="classId" value="${cls.id}">${state.config.subjects
+      .map((subject, index) => {
+        const c = courses.find((c) => c.subject === subject);
+        return `<section class="form-section"><label class="check-item"><input type="checkbox" name="subjects" value="${esc(subject)}" ${c ? "checked" : ""}>${esc(nameSubject(subject))}</label><label class="form-field"><span>显示名称</span><input name="title-${index}" value="${esc(c?.title || nameSubject(subject))}" maxlength="60"></label><label class="form-field"><span>当前课程内容</span><textarea name="content-${index}" maxlength="10000" rows="3">${esc(c?.content || "")}</textarea></label></section>`;
+      })
+      .join("")}</form>`,
+    '<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="courses-form">保存课程</button>',
+    true,
+  );
+}
 function content() {
   if (state.attempt) return examView();
   if (state.examResult) return resultView();
+  if (state.user.role === "student" && state.view === "account")
+    return accountView();
   if (state.user.role === "student" && state.view === "exam-entry")
     return examEntryView();
   if (state.user.role === "student")
@@ -517,9 +566,9 @@ function renderAuth() {
   const masterAccountField = `<label class="form-field"><span>管理账号 · 固定</span><input name="username" type="text" value="master" autocomplete="username" readonly></label>`;
   let fields;
   if (tab === "student")
-    fields = `${field("学生账号", "username", "text", "例如：chen2026001")}${field("登录密码", "password", "password", "请输入你的密码")}<p class="privacy-note" style="margin:0 0 18px">忘记密码请联系老师重置开通码，历史成绩和错题会保留。</p>`;
+    fields = `${field("学生账号", "username", "text", "输入老师登记的姓名")}${field("登录密码", "password", "password", "请输入你的密码")}<p class="privacy-note" style="margin:0 0 18px">老师已开通账号的同学，请直接使用姓名和老师提供的初始密码登录，无需再次开通。登录后可在「账号设置」修改密码。忘记密码可联系老师重置，历史成绩和错题会保留。</p>`;
   else if (activating)
-    fields = `${field("老师登记的姓名", "name", "text", "请与老师名单保持一致")}${invite ? '<div class="alert success">已识别老师提供的个人开通码。</div>' : field("老师提供的学习码", "invite", "text", "请勿使用其他同学的学习码")}${field("设置学生账号", "username", "text", "3–40 位英文、数字、点或下划线")}${field("设置密码（至少 10 位）", "password", "password", "用于以后在任何电脑登录")}${field("再次输入密码", "passwordConfirm", "password", "请再次输入密码")}`;
+    fields = `${field("老师登记的姓名", "name", "text", "请与老师名单保持一致")}${invite ? '<div class="alert success">已识别老师提供的个人开通码。</div>' : field("老师提供的学习码", "invite", "text", "请勿使用其他同学的学习码")}${field("设置学生账号", "username", "text", "支持中文姓名，最多 60 个字符")}${field("设置密码（至少 10 位）", "password", "password", "用于以后在任何电脑登录")}${field("再次输入密码", "passwordConfirm", "password", "请再次输入密码")}`;
   else if (tab === "teacher")
     fields = `${masterAccountField}${field("Master 密码", "password", "password", "请输入你设置的管理密码")}`;
   else
@@ -585,7 +634,12 @@ function taskFilters() {
   if (!f) return;
   const program = f.elements.program.value,
     subject = f.elements.subject.value;
-  const classes = state.classes.filter((c) => c.program === program);
+  const classes = state.classes.filter(
+    (c) =>
+      c.program === program &&
+      (!c.courses?.length ||
+        c.courses.some((course) => course.subject === subject)),
+  );
   $("#task-classes").innerHTML = classes.length
     ? classes
         .map(
@@ -593,7 +647,7 @@ function taskFilters() {
             `<label class="check-item"><input type="checkbox" name="classIds" value="${c.id}" data-change="task-audience" checked>${esc(c.name)} <span class="muted">${c.studentCount} 人</span></label>`,
         )
         .join("")
-    : '<div class="alert">该项目还没有班级，请先到班级管理创建。</div>';
+    : '<div class="alert">该项目没有开设此科目的班级，请更换科目或在班级管理中配置课程。</div>';
   const words = state.words.filter(
     (w) =>
       w.subject === subject &&
@@ -974,6 +1028,9 @@ document.addEventListener("click", async (e) => {
     if (action === "add-students") return addStudents();
     if (action === "add-word") return addWord();
     if (action === "import-words") return importWords();
+    if (action === "class-courses") return classCourses(b.dataset.id);
+    if (action === "edit-class-courses")
+      return classCourses(b.dataset.id, true);
     if (action === "class-detail") {
       state.view = "students";
       state.filter = {
@@ -1266,6 +1323,41 @@ document.addEventListener("submit", async (e) => {
     form.querySelector("[type=submit]");
   if (submit) submit.disabled = true;
   try {
+    if (form.id === "password-form") {
+      if (data.newPassword !== data.passwordConfirm)
+        throw new Error("两次输入的新密码不一致。");
+      const r = await post("/api/account/password", {
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
+      });
+      state.user = r.user;
+      render();
+      toast("密码已修改，下次请使用新密码登录。");
+    }
+    if (form.id === "courses-form") {
+      const selected = new FormData(form).getAll("subjects"),
+        cls = state.classes.find((c) => c.id === data.classId);
+      const courses = state.config.subjects.flatMap((subject, index) =>
+        selected.includes(subject)
+          ? [
+              {
+                subject,
+                title: data[`title-${index}`],
+                content: data[`content-${index}`],
+                source: "master 维护",
+              },
+            ]
+          : [],
+      );
+      await api(`/api/classes/${data.classId}/courses`, {
+        method: "PUT",
+        body: JSON.stringify({ courses }),
+      });
+      closeModal();
+      await load();
+      render();
+      toast("班级课程已保存。");
+    }
     if (form.id === "auth-form") {
       const activating = data.role === "activate";
       if (

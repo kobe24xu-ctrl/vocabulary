@@ -1,3 +1,9 @@
+import { validateCourses } from "./lib/courses.mjs";
+import {
+  normalizeUsername,
+  validStudentUsername,
+  validNewPassword,
+} from "./lib/accounts.mjs";
 import {
   MASTER_ACCOUNT,
   MASTER_NAME,
@@ -62,6 +68,17 @@ if (
 db.exec(
   "CREATE UNIQUE INDEX IF NOT EXISTS users_username ON users(username) WHERE username IS NOT NULL",
 );
+if (
+  !all("PRAGMA table_info(users)").some(
+    (column) => column.name === "initial_password",
+  )
+)
+  db.exec(
+    "ALTER TABLE users ADD COLUMN initial_password INTEGER NOT NULL DEFAULT 0",
+  );
+db.exec(
+  "CREATE TABLE IF NOT EXISTS class_courses(class_id TEXT NOT NULL REFERENCES classes(id),subject TEXT NOT NULL,title TEXT NOT NULL,content TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT '',PRIMARY KEY(class_id,subject))",
+);
 const hash = (v) => createHash("sha256").update(String(v)).digest("hex");
 const token = () => randomBytes(24).toString("hex");
 const id = () => randomUUID();
@@ -119,6 +136,7 @@ function userInfo(u, session) {
     program: u.program,
     classId: u.class_id,
     username: u.role === "teacher" ? MASTER_ACCOUNT : u.username,
+    initialPassword: u.role === "student" && !!u.initial_password,
     isDemo: !!session?.demo_owner_id,
   };
 }
@@ -162,6 +180,22 @@ function auth(req, role) {
   if (!user) fail(401, "请先登录。");
   if (role && user.role !== role) fail(403, "当前身份无权执行此操作。");
   return { user, session };
+}
+function classViews(owner) {
+  const classes = all(
+    "SELECT c.*, (SELECT count(*) FROM users WHERE class_id=c.id) AS studentCount FROM classes c WHERE c.owner_id=? ORDER BY c.created_at",
+    owner,
+  );
+  const courses = all(
+    "SELECT cc.* FROM class_courses cc JOIN classes c ON cc.class_id=c.id WHERE c.owner_id=?",
+    owner,
+  );
+  return classes.map((c) => ({
+    ...c,
+    courses: courses
+      .filter((row) => row.class_id === c.id)
+      .map(({ class_id, ...course }) => course),
+  }));
 }
 function wordsFor(owner) {
   return [
@@ -292,6 +326,16 @@ function taskCreate(owner, b) {
     )
   )
     fail(400, "请选择当前项目下的有效班级。");
+  if (
+    classIds.some((cid) => {
+      const courses = all(
+        "SELECT subject FROM class_courses WHERE class_id=?",
+        cid,
+      );
+      return courses.length && !courses.some((c) => c.subject === b.subject);
+    })
+  )
+    fail(400, "所选科目未配置给该班级，请先调整班级课程。");
   let audience = "all";
   if (b.audience !== "all") {
     if (
@@ -649,11 +693,14 @@ async function api(req, res, url) {
     if (!student || student.name !== String(b.name || "").trim())
       fail(401, "姓名或学习码不正确，请向老师核对。");
     if (student.password) fail(409, "账号已开通，请使用账号和密码登录。");
-    const username = required(b.username, "学生账号", 40).toLowerCase();
+    const username = normalizeUsername(required(b.username, "学生账号", 60));
     if (username === MASTER_ACCOUNT)
       fail(400, "master 为管理账号，请选择其他学生账号。");
-    if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(username))
-      fail(400, "账号需为 3–40 位英文字母、数字、点、下划线或连字符。");
+    if (!validStudentUsername(username))
+      fail(
+        400,
+        "账号支持学生姓名、英文、数字、点、下划线或连字符，最多 60 个字符。",
+      );
     const password = b.password;
     if (
       typeof password !== "string" ||
@@ -671,7 +718,7 @@ async function api(req, res, url) {
     )
       fail(409, "该账号已被使用，请选择其他账号。");
     run(
-      "UPDATE users SET username=?,password=?,invite_hash=NULL WHERE id=?",
+      "UPDATE users SET username=?,password=?,invite_hash=NULL,initial_password=0 WHERE id=?",
       username,
       passwordHash(password),
       student.id,
@@ -687,16 +734,15 @@ async function api(req, res, url) {
   }
   if (path === "/api/login" && method === "POST") {
     const b = await body(req);
-    limited(
-      req,
-      `login:${hash(
-        String(
-          b.role === "teacher" ? MASTER_ACCOUNT : b.username || b.invite || "",
-        )
-          .trim()
-          .toLowerCase(),
-      )}`,
-    );
+    const identity =
+      b.role === "teacher"
+        ? MASTER_ACCOUNT
+        : b.username
+          ? normalizeUsername(b.username)
+          : String(b.invite || "")
+              .replace(/\s/g, "")
+              .toUpperCase();
+    limited(req, `login:${hash(identity)}`);
     if (typeof b.password === "string" && b.password.length > 200)
       fail(401, "账号或密码不正确。");
     let u;
@@ -708,7 +754,7 @@ async function api(req, res, url) {
     } else if (b.username) {
       u = one(
         "SELECT * FROM users WHERE username=? AND role='student'",
-        String(b.username).trim().toLowerCase(),
+        normalizeUsername(b.username),
       );
       if (!u || !passwordOK(String(b.password || ""), u.password))
         fail(401, "学生账号或密码不正确。");
@@ -734,6 +780,69 @@ async function api(req, res, url) {
   }
   const { user: u, session } = auth(req);
   sweep();
+  if (path === "/api/account/password" && method === "POST") {
+    if (u.role !== "student") fail(403, "请使用学生账号。");
+    limited(req, `password:${u.id}`);
+    const b = await body(req);
+    if (
+      typeof b.currentPassword !== "string" ||
+      b.currentPassword.length > 200 ||
+      !passwordOK(b.currentPassword, u.password)
+    )
+      fail(403, "当前密码不正确。");
+    if (!validNewPassword(b.newPassword))
+      fail(400, "新密码需要 10–200 个字符。");
+    const next = passwordHash(b.newPassword);
+    const changed = run(
+      "UPDATE users SET password=?,initial_password=0,invite_hash=NULL WHERE id=? AND password=?",
+      next,
+      u.id,
+      u.password,
+    );
+    if (!changed.changes) fail(409, "账号状态已变化，请重新登录后操作。");
+    run("DELETE FROM sessions WHERE user_id=?", u.id);
+    return {
+      user: newSession(
+        req,
+        res,
+        one("SELECT * FROM users WHERE id=?", u.id),
+        session.demo_owner_id,
+      ),
+      ok: true,
+    };
+  }
+  const courseRoute = path.match(/^\/api\/classes\/([^/]+)\/courses$/);
+  if (courseRoute && method === "PUT") {
+    if (
+      u.role !== "teacher" ||
+      !one(
+        "SELECT id FROM classes WHERE id=? AND owner_id=?",
+        courseRoute[1],
+        u.id,
+      )
+    )
+      fail(404, "未找到班级。");
+    const b = await body(req),
+      courses = validateCourses(b.courses);
+    db.exec("BEGIN");
+    try {
+      run("DELETE FROM class_courses WHERE class_id=?", courseRoute[1]);
+      for (const c of courses)
+        run(
+          "INSERT INTO class_courses VALUES(?,?,?,?,?)",
+          courseRoute[1],
+          c.subject,
+          c.title,
+          c.content,
+          c.source,
+        );
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+    return { courses };
+  }
   if (path === "/api/me" && method === "GET")
     return { user: userInfo(u, session), serverTime: Date.now() };
   if (path === "/api/demo/switch" && method === "POST") {
@@ -777,12 +886,7 @@ async function api(req, res, url) {
   }
   if (path === "/api/classes" && method === "GET") {
     if (u.role !== "teacher") fail(403, "仅教师可查看班级。");
-    return {
-      classes: all(
-        "SELECT c.*, (SELECT count(*) FROM users WHERE class_id=c.id) AS studentCount FROM classes c WHERE c.owner_id=? ORDER BY c.created_at",
-        u.id,
-      ),
-    };
+    return { classes: classViews(u.id) };
   }
   if (path === "/api/classes" && method === "POST") {
     if (u.role !== "teacher") fail(403, "仅教师可创建班级。");
@@ -836,7 +940,7 @@ async function api(req, res, url) {
       fail(404, "未找到学生。");
     const invite = randomBytes(9).toString("hex").toUpperCase();
     run(
-      "UPDATE users SET invite_hash=?,password=NULL WHERE id=?",
+      "UPDATE users SET invite_hash=?,password=NULL,initial_password=0 WHERE id=?",
       hash(invite),
       reset[1],
     );

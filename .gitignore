@@ -7,3 +7,4 @@ cloudflare/wrangler.deploy.json
 .env
 *.log
 .DS_Store
+__pycache__/

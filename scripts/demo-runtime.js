@@ -46,6 +46,7 @@
         ? "国际预科教学中心"
         : db.classes.find((c) => c.id === u.classId)?.name,
     program: u.program,
+    initialPassword: !!u.initialPassword,
     isDemo: true,
   });
   const allowed = (task, student) =>
@@ -369,11 +370,13 @@
       if (username === "master")
         reject("master 为管理账号，请选择其他学生账号。");
       if (
-        !/^[a-z0-9][a-z0-9._-]{2,39}$/.test(username) ||
+        !username ||
+        username.length > 60 ||
+        !/^[\p{L}\p{N}][\p{L}\p{N} .·_-]*$/u.test(username) ||
         typeof body.password !== "string" ||
         body.password.length < 10
       )
-        reject("请输入有效演示账号和至少 10 位的测试密码。");
+        reject("请输入有效姓名账号和至少 10 位的演示密码。");
       if (db.users.some((s) => s.id !== u.id && s.username === username))
         reject("该演示账号已存在。", 409);
       Object.assign(u, {
@@ -393,6 +396,53 @@
       if (!target) reject("未找到演示学生。", 404);
       db.sessionId = target.id;
       return { user: info(target) };
+    }
+    if (path === "/api/account/password" && method === "POST") {
+      const u = requireUser("student");
+      if (
+        !u.passwordHash ||
+        (await digest(body.currentPassword)) !== u.passwordHash
+      )
+        reject("当前密码不正确，演示切换身份需先开通测试账号。", 403);
+      if (
+        typeof body.newPassword !== "string" ||
+        body.newPassword.length < 10 ||
+        body.newPassword.length > 200 ||
+        !body.newPassword.trim()
+      )
+        reject("新密码需要 10–200 个字符。");
+      u.passwordHash = await digest(body.newPassword);
+      u.initialPassword = false;
+      return { user: info(u), ok: true };
+    }
+    const courseRoute = path.match(/^\/api\/classes\/([^/]+)\/courses$/);
+    if (courseRoute && method === "PUT") {
+      requireUser("teacher");
+      const cls = db.classes.find((c) => c.id === courseRoute[1]);
+      if (!cls) reject("未找到班级。", 404);
+      if (!Array.isArray(body.courses) || body.courses.length > SUBJECTS.length)
+        reject("班级科目格式不正确。");
+      const seen = new Set();
+      cls.courses = body.courses.map((c) => {
+        if (
+          !SUBJECTS.includes(c.subject) ||
+          seen.has(c.subject) ||
+          typeof c.title !== "string" ||
+          !c.title.trim() ||
+          c.title.length > 60 ||
+          typeof c.content !== "string" ||
+          c.content.length > 10000
+        )
+          reject("班级科目格式不正确。");
+        seen.add(c.subject);
+        return {
+          subject: c.subject,
+          title: c.title.trim(),
+          content: c.content,
+          source: c.source || "master 维护",
+        };
+      });
+      return { courses: cls.courses };
     }
     if (path === "/api/classes") {
       requireUser("teacher");

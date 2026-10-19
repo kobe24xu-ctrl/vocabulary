@@ -1,3 +1,9 @@
+import { validateCourses } from "../lib/courses.mjs";
+import {
+  normalizeUsername,
+  validStudentUsername,
+  validNewPassword,
+} from "../lib/accounts.mjs";
 import {
   MASTER_ACCOUNT,
   MASTER_NAME,
@@ -158,6 +164,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
       program: u.program,
       classId: u.class_id,
       username: u.role === "teacher" ? MASTER_ACCOUNT : u.username,
+      initialPassword: u.role === "student" && !!u.initial_password,
       isDemo: !!session?.demo_owner_id,
     };
   }
@@ -255,6 +262,22 @@ function service(env, request, headers = new Headers(SECURITY)) {
       fail(400, "请求必须是 JSON 对象。");
     return value;
   }
+  async function classViews(owner) {
+    const classes = await all(
+      "SELECT c.*, (SELECT count(*) FROM users WHERE class_id=c.id) AS studentCount FROM classes c WHERE c.owner_id=? ORDER BY c.created_at",
+      owner,
+    );
+    const courses = await all(
+      "SELECT cc.* FROM class_courses cc JOIN classes c ON cc.class_id=c.id WHERE c.owner_id=?",
+      owner,
+    );
+    return classes.map((c) => ({
+      ...c,
+      courses: courses
+        .filter((row) => row.class_id === c.id)
+        .map(({ class_id, ...course }) => course),
+    }));
+  }
   async function wordsFor(owner) {
     return [
       ...SAMPLE_WORDS,
@@ -341,7 +364,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
   async function taskContext(owner) {
     return {
       words: await wordsFor(owner),
-      classes: await all("SELECT * FROM classes WHERE owner_id=?", owner),
+      classes: await classViews(owner),
       students: await all(
         "SELECT id,class_id FROM users WHERE owner_id=? AND role='student'",
         owner,
@@ -396,6 +419,16 @@ function service(env, request, headers = new Headers(SECURITY)) {
       )
     )
       fail(400, "请选择当前项目下的有效班级。");
+    if (
+      classIds.some((cid) => {
+        const c = context.classes.find((c) => c.id === cid);
+        return (
+          c.courses?.length &&
+          !c.courses.some((course) => course.subject === b.subject)
+        );
+      })
+    )
+      fail(400, "所选科目未配置给该班级，请先调整班级课程。");
     let audience = "all";
     if (b.audience !== "all") {
       if (
@@ -808,12 +841,15 @@ function service(env, request, headers = new Headers(SECURITY)) {
       if (!s || s.name !== String(b.name || "").trim())
         fail(401, "姓名或学习码不正确，请向老师核对。");
       if (s.password) fail(409, "账号已开通，请使用账号和密码登录。");
-      const username = required(b.username, "学生账号", 40).toLowerCase(),
+      const username = normalizeUsername(required(b.username, "学生账号", 60)),
         password = b.password;
       if (username === MASTER_ACCOUNT)
         fail(400, "master 为管理账号，请选择其他学生账号。");
-      if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(username))
-        fail(400, "账号需为 3–40 位英文字母、数字、点、下划线或连字符。");
+      if (!validStudentUsername(username))
+        fail(
+          400,
+          "账号支持学生姓名、英文、数字、点、下划线或连字符，最多 60 个字符。",
+        );
       if (
         typeof password !== "string" ||
         password.length < 10 ||
@@ -822,7 +858,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
       )
         fail(400, "密码需要 10–200 个字符。");
       const result = await run(
-        "UPDATE users SET username=?,password=?,invite_hash=NULL WHERE id=? AND invite_hash=? AND password IS NULL",
+        "UPDATE users SET username=?,password=?,invite_hash=NULL,initial_password=0 WHERE id=? AND invite_hash=? AND password IS NULL",
         username,
         await passwordHash(password),
         s.id,
@@ -839,17 +875,15 @@ function service(env, request, headers = new Headers(SECURITY)) {
     }
     if (path === "/api/login" && method === "POST") {
       const b = await body();
-      await limited(
-        `login:${await hash(
-          String(
-            b.role === "teacher"
-              ? MASTER_ACCOUNT
-              : b.username || b.invite || "",
-          )
-            .trim()
-            .toLowerCase(),
-        )}`,
-      );
+      const identity =
+        b.role === "teacher"
+          ? MASTER_ACCOUNT
+          : b.username
+            ? normalizeUsername(b.username)
+            : String(b.invite || "")
+                .replace(/\s/g, "")
+                .toUpperCase();
+      await limited(`login:${await hash(identity)}`);
       if (typeof b.password === "string" && b.password.length > 200)
         fail(401, "账号或密码不正确。");
       let u;
@@ -862,7 +896,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
       } else if (b.username) {
         u = await one(
           "SELECT * FROM users WHERE username=? AND role='student'",
-          String(b.username).trim().toLowerCase(),
+          normalizeUsername(b.username),
         );
         if (!u || !(await passwordOK(String(b.password || ""), u.password)))
           fail(401, "学生账号或密码不正确。");
@@ -891,6 +925,76 @@ function service(env, request, headers = new Headers(SECURITY)) {
         session &&
         (await one("SELECT * FROM users WHERE id=?", session.user_id));
     if (!u) fail(401, "请先登录。");
+    if (path === "/api/account/password" && method === "POST") {
+      student(u);
+      await limited(`password:${u.id}`);
+      const b = await body();
+      if (
+        typeof b.currentPassword !== "string" ||
+        b.currentPassword.length > 200 ||
+        !(await passwordOK(b.currentPassword, u.password))
+      )
+        fail(403, "当前密码不正确。");
+      if (!validNewPassword(b.newPassword))
+        fail(400, "新密码需要 10–200 个字符。");
+      const next = await passwordHash(b.newPassword);
+      const changed = await batch([
+        statement(
+          "UPDATE users SET password=?,initial_password=0,invite_hash=NULL WHERE id=? AND password=?",
+          next,
+          u.id,
+          u.password,
+        ),
+        statement(
+          "DELETE FROM sessions WHERE user_id=? AND EXISTS(SELECT 1 FROM users WHERE id=? AND password=?)",
+          u.id,
+          u.id,
+          next,
+        ),
+      ]);
+      if (!changed[0].meta.changes)
+        fail(409, "账号状态已变化，请重新登录后操作。");
+      return {
+        user: await newSession(
+          await one("SELECT * FROM users WHERE id=?", u.id),
+          session.demo_owner_id,
+        ),
+        ok: true,
+      };
+    }
+    const courseRoute = path.match(/^\/api\/classes\/([^/]+)\/courses$/);
+    if (courseRoute && method === "PUT") {
+      teacher(u);
+      if (
+        !(await one(
+          "SELECT id FROM classes WHERE id=? AND owner_id=?",
+          courseRoute[1],
+          u.id,
+        ))
+      )
+        fail(404, "未找到班级。");
+      const b = await body(),
+        courses = validateCourses(b.courses);
+      const statements = [
+        statement("DELETE FROM class_courses WHERE class_id=?", courseRoute[1]),
+      ];
+      if (courses.length)
+        statements.push(
+          bulk(
+            "class_courses",
+            ["class_id", "subject", "title", "content", "source"],
+            courses.map((c) => [
+              courseRoute[1],
+              c.subject,
+              c.title,
+              c.content,
+              c.source,
+            ]),
+          ),
+        );
+      await batch(statements);
+      return { courses };
+    }
     if (path === "/api/me" && method === "GET")
       return { user: await userInfo(u, session), serverTime: Date.now() };
     if (path === "/api/demo/switch" && method === "POST") {
@@ -932,12 +1036,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
     }
     if (path === "/api/classes" && method === "GET") {
       teacher(u);
-      return {
-        classes: await all(
-          "SELECT c.*, (SELECT count(*) FROM users WHERE class_id=c.id) AS studentCount FROM classes c WHERE c.owner_id=? ORDER BY c.created_at",
-          u.id,
-        ),
-      };
+      return { classes: await classViews(u.id) };
     }
     if (path === "/api/classes" && method === "POST") {
       teacher(u);
@@ -983,7 +1082,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
       const invite = token(9).toUpperCase();
       await batch([
         statement(
-          "UPDATE users SET invite_hash=?,password=NULL WHERE id=?",
+          "UPDATE users SET invite_hash=?,password=NULL,initial_password=0 WHERE id=?",
           await hash(invite),
           reset[1],
         ),
