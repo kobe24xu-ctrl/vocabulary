@@ -37,10 +37,9 @@
   };
   const info = (u) => ({
     id: u.id,
-    name: u.name,
+    name: u.role === "teacher" ? "演示 Master" : u.name,
     role: u.role,
-    username: u.username,
-    email: u.email,
+    username: u.role === "teacher" ? "master" : u.username,
     classId: u.classId,
     className:
       u.role === "teacher"
@@ -308,6 +307,8 @@
         programs: PROGRAMS,
         subjects: SUBJECTS,
         subjectNames: SUBJECT_NAMES,
+        masterAccount: "master",
+        managementModel: "single-master",
         setupRequired: false,
         demoAvailable: true,
         serverTime: Date.now(),
@@ -365,6 +366,8 @@
       const username = String(body.username || "")
         .trim()
         .toLowerCase();
+      if (username === "master")
+        reject("master 为管理账号，请选择其他学生账号。");
       if (
         !/^[a-z0-9][a-z0-9._-]{2,39}$/.test(username) ||
         typeof body.password !== "string" ||

@@ -1,4 +1,10 @@
 import {
+  MASTER_ACCOUNT,
+  MASTER_NAME,
+  MANAGEMENT_MODEL,
+  isMasterLogin,
+} from "../lib/master.mjs";
+import {
   SAMPLE_WORDS,
   PROGRAMS,
   SUBJECTS,
@@ -142,12 +148,16 @@ function service(env, request, headers = new Headers(SECURITY)) {
     return {
       id: u.id,
       role: u.role,
-      name: u.name,
-      email: u.role === "teacher" ? u.email : undefined,
+      name:
+        u.role === "teacher"
+          ? session?.demo_owner_id
+            ? "演示 Master"
+            : MASTER_NAME
+          : u.name,
       className: u.role === "teacher" ? u.class_name : cls?.name,
       program: u.program,
       classId: u.class_id,
-      username: u.role === "student" ? u.username : undefined,
+      username: u.role === "teacher" ? MASTER_ACCOUNT : u.username,
       isDemo: !!session?.demo_owner_id,
     };
   }
@@ -734,6 +744,8 @@ function service(env, request, headers = new Headers(SECURITY)) {
     if (path === "/api/config" && method === "GET")
       return {
         hosting: "cloudflare",
+        masterAccount: MASTER_ACCOUNT,
+        managementModel: MANAGEMENT_MODEL,
         programs: PROGRAMS,
         subjects: SUBJECTS,
         subjectNames: SUBJECT_NAMES,
@@ -752,7 +764,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
       await limited("setup");
       const b = await body();
       if (await one("SELECT id FROM users WHERE role='teacher' AND demo=0"))
-        fail(409, "教师账号已建立，请登录。");
+        fail(409, "Master 账号已建立，请使用 master 和密码登录。");
       if (!env.SETUP_KEY || env.SETUP_KEY.length < 24)
         fail(
           503,
@@ -760,21 +772,16 @@ function service(env, request, headers = new Headers(SECURITY)) {
         );
       if (!equal(await hash(b.setupKey || ""), await hash(env.SETUP_KEY)))
         fail(403, "设置密钥不正确，请向应用管理员核对 SETUP_KEY。");
-      const name = required(b.name, "教师姓名", 60),
-        email = required(b.email, "邮箱", 150).toLowerCase(),
-        password = required(b.password, "密码", 200),
-        className = required(b.className, "班级名称", 100);
+      const password = required(b.password, "Master 密码", 200),
+        className = required(b.className, "首个班级名称", 100);
       if (password.length < 10) fail(400, "密码至少需要 10 个字符。");
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-        fail(400, "请输入有效邮箱。");
       const uid = id(),
         cls = classData(uid, { name: className, program: PROGRAMS[0] });
       await batch([
         statement(
-          "INSERT INTO users(id,role,name,email,password,class_name,created_at) VALUES(?,'teacher',?,?,?,?,?)",
+          "INSERT INTO users(id,role,name,password,class_name,created_at) VALUES(?,'teacher',?,?,?,?)",
           uid,
-          name,
-          email,
+          MASTER_NAME,
           await passwordHash(password),
           className,
           Date.now(),
@@ -803,6 +810,8 @@ function service(env, request, headers = new Headers(SECURITY)) {
       if (s.password) fail(409, "账号已开通，请使用账号和密码登录。");
       const username = required(b.username, "学生账号", 40).toLowerCase(),
         password = b.password;
+      if (username === MASTER_ACCOUNT)
+        fail(400, "master 为管理账号，请选择其他学生账号。");
       if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(username))
         fail(400, "账号需为 3–40 位英文字母、数字、点、下划线或连字符。");
       if (
@@ -832,7 +841,11 @@ function service(env, request, headers = new Headers(SECURITY)) {
       const b = await body();
       await limited(
         `login:${await hash(
-          String(b.email || b.username || b.invite || "")
+          String(
+            b.role === "teacher"
+              ? MASTER_ACCOUNT
+              : b.username || b.invite || "",
+          )
             .trim()
             .toLowerCase(),
         )}`,
@@ -841,14 +854,11 @@ function service(env, request, headers = new Headers(SECURITY)) {
         fail(401, "账号或密码不正确。");
       let u;
       if (b.role === "teacher") {
-        u = await one(
-          "SELECT * FROM users WHERE email=? AND role='teacher' AND demo=0",
-          String(b.email || "")
-            .trim()
-            .toLowerCase(),
-        );
+        if (!isMasterLogin(b))
+          fail(401, "管理账号为 master，请核对账号和密码。");
+        u = await one("SELECT * FROM users WHERE role='teacher' AND demo=0");
         if (!u || !(await passwordOK(String(b.password || ""), u.password)))
-          fail(401, "邮箱或密码不正确。");
+          fail(401, "Master 账号或密码不正确。");
       } else if (b.username) {
         u = await one(
           "SELECT * FROM users WHERE username=? AND role='student'",
