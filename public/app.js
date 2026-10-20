@@ -610,11 +610,12 @@ function createTask() {
     addStudents();
     return;
   }
-  const first = state.classes[0];
+  const initialClass =
+    state.classes.find((c) => c.id === state.filter.classId)?.id || "";
   modal(
     "发布场景听写",
-    "选择课程、科目和接收对象，把词汇放进真正的场景。",
-    `<form id="task-form"><div class="form-grid"><div class="full">${field("任务名称", "title", "text", "例如：经济学 · 市场与价格机制")}</div><label class="form-field"><span>课程项目</span><select name="program" data-change="task-filters">${state.config.programs.map((p) => option(p, p, first.program)).join("")}</select></label><label class="form-field"><span>科目</span><select name="subject" data-change="task-filters">${state.config.subjects.map((s) => option(s, nameSubject(s), "Economics")).join("")}</select></label><label class="form-field"><span>答题形式</span><select name="mode">${[
+    "先选班级，再选该班科目；默认全班参加，可取消勾选个别人。",
+    `<form id="task-form"><div class="form-grid"><div class="full">${field("任务名称", "title", "text", "例如：经济学 · 市场与价格机制")}</div><label class="form-field full"><span>选择班级</span><select name="classId" data-change="task-class" required>${option("", "请选择班级", initialClass)}${state.classes.map((c) => option(c.id, `${c.name} · ${programShort(c.program)}`, initialClass)).join("")}</select></label><label class="form-field"><span>该班科目</span><select name="subject" data-change="task-words" required disabled><option value="">请先选择班级</option></select></label><label class="form-field"><span>答题形式</span><select name="mode">${[
       ["mixed", "双向翻译 · 英中交替"],
       ["en-zh", "英译中 · 场景听写"],
       ["zh-en", "中译英 · 场景听写"],
@@ -623,36 +624,48 @@ function createTask() {
       .map(([v, l]) => option(v, l, "mixed"))
       .join(
         "",
-      )}</select></label>${field("答题时长（分钟，1–180）", "duration", "number", "", true, "15")}<div class="full">${field("按相同时间连续发布几天（1–30）", "repeatDays", "number", "", true, "1")}</div><label class="form-field"><span>开放时间</span><input name="opensAt" type="datetime-local" value="${fmtLocal(Date.now())}" required></label><label class="form-field"><span>截止时间</span><input name="closesAt" type="datetime-local" value="${fmtLocal(Date.now() + 86400000)}" required></label></div><div class="form-section">01 &nbsp; 选择接收班级</div><div id="task-classes" class="check-list"></div><div class="form-section">02 &nbsp; 指定学生</div><label class="form-field"><select name="audienceMode" data-change="task-audience"><option value="all">所选班级的全体学生</option><option value="selected">仅发给我指定的学生</option></select></label><div id="task-students" class="check-list"></div><div class="form-section">03 &nbsp; 场景词汇 <button type="button" class="btn btn-quiet" data-action="select-all-words">全选 / 取消</button></div><div class="check-list" id="task-words"></div><p class="task-summary" id="task-summary"></p><div class="alert" style="margin-top:17px;margin-bottom:0">任务发布后即按预约时间开放。学生开始后计时，截止时间与答题时长先到者为准；超时按服务端已保存答案自动评分。</div></form>`,
+      )}</select></label>${field("答题时长（分钟，1–180）", "duration", "number", "", true, "15")}<div class="full">${field("按相同时间连续发布几天（1–30）", "repeatDays", "number", "", true, "1")}</div><label class="form-field"><span>开放时间</span><input name="opensAt" type="datetime-local" value="${fmtLocal(Date.now())}" required></label><label class="form-field"><span>截止时间</span><input name="closesAt" type="datetime-local" value="${fmtLocal(Date.now() + 86400000)}" required></label></div><div class="form-section">01 &nbsp; 参加学生 · 默认全选 <button type="button" class="btn btn-quiet" data-action="select-all-students">全选 / 取消全选</button></div><div id="task-students" class="check-list"></div><p class="muted" id="task-audience-count"></p><div class="form-section">02 &nbsp; 场景词汇 <button type="button" class="btn btn-quiet" data-action="select-all-words">全选 / 取消</button></div><div class="check-list" id="task-words"></div><p class="task-summary" id="task-summary"></p><div class="alert" style="margin-top:17px;margin-bottom:0">任务发布后即按预约时间开放。学生开始后计时，截止时间与答题时长先到者为准；超时按服务端已保存答案自动评分。</div></form>`,
     `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="task-form">${icon("check")}确认发布</button>`,
     true,
   );
   taskFilters();
 }
 function taskFilters() {
-  const f = $("#task-form");
-  if (!f) return;
-  const program = f.elements.program.value,
-    subject = f.elements.subject.value;
-  const classes = state.classes.filter(
-    (c) =>
-      c.program === program &&
-      (!c.courses?.length ||
-        c.courses.some((course) => course.subject === subject)),
-  );
-  $("#task-classes").innerHTML = classes.length
-    ? classes
-        .map(
-          (c) =>
-            `<label class="check-item"><input type="checkbox" name="classIds" value="${c.id}" data-change="task-audience" checked>${esc(c.name)} <span class="muted">${c.studentCount} 人</span></label>`,
+  const form = $("#task-form");
+  if (!form) return;
+  const cls = state.classes.find((c) => c.id === form.elements.classId.value);
+  const subjectSelect = form.elements.subject,
+    previous = subjectSelect.value;
+  const courses = cls?.courses || [];
+  subjectSelect.innerHTML =
+    option("", cls ? "请选择该班科目" : "请先选择班级", "") +
+    courses
+      .map((c) => option(c.subject, c.title || nameSubject(c.subject)))
+      .join("");
+  subjectSelect.disabled = !courses.length;
+  subjectSelect.value = courses.some((c) => c.subject === previous)
+    ? previous
+    : courses.length === 1
+      ? courses[0].subject
+      : "";
+  if (cls && !courses.length)
+    subjectSelect.innerHTML = option("", "该班尚未配置科目", "");
+  taskAudience();
+  taskWords();
+}
+function taskWords() {
+  const form = $("#task-form");
+  if (!form) return;
+  const cls = state.classes.find((c) => c.id === form.elements.classId.value),
+    subject = form.elements.subject.value;
+  const words =
+    cls && subject
+      ? state.words.filter(
+          (w) =>
+            w.subject === subject &&
+            (w.program === "通用示例" || w.program === cls.program),
         )
-        .join("")
-    : '<div class="alert">该项目没有开设此科目的班级，请更换科目或在班级管理中配置课程。</div>';
-  const words = state.words.filter(
-    (w) =>
-      w.subject === subject &&
-      (w.program === "通用示例" || w.program === program),
-  );
+      : [];
   $("#task-words").innerHTML = words.length
     ? words
         .map(
@@ -660,34 +673,42 @@ function taskFilters() {
             `<label class="check-item word-choice"><input type="checkbox" name="wordIds" value="${w.id}" data-change="task-summary" checked><span><strong>${esc(w.term)}</strong><small>${esc(w.translation)} · ${w.program === "通用示例" ? "自编示例" : "教师词库"}</small></span></label>`,
         )
         .join("")
-    : '<div class="alert">这个科目暂无词汇，请先添加词汇与场景句。</div>';
-  taskAudience();
+    : `<div class="alert">${!cls ? "请先选择班级。" : !cls.courses?.length ? "请先到班级管理中配置该班科目。" : !subject ? "请选择该班的科目。" : "这个科目暂无词汇，请先添加词汇与场景句。"}</div>`;
   taskSummary();
 }
 function taskAudience() {
-  const f = $("#task-form");
-  if (!f) return;
-  const classes = new FormData(f).getAll("classIds"),
-    selected = f.elements.audienceMode.value === "selected";
-  const students = state.students.filter((s) => classes.includes(s.classId));
-  $("#task-students").innerHTML = selected
+  const form = $("#task-form");
+  if (!form) return;
+  const cls = state.classes.find((c) => c.id === form.elements.classId.value);
+  const students = cls
+    ? state.students.filter((s) => s.classId === cls.id)
+    : [];
+  $("#task-students").innerHTML = students.length
     ? students
         .map(
           (s) =>
-            `<label class="check-item"><input type="checkbox" name="studentIds" value="${s.id}">${esc(s.name)} <span class="muted">${esc(clsName(s.classId))}</span></label>`,
+            `<label class="check-item"><input type="checkbox" name="studentIds" value="${s.id}" data-change="task-summary" checked>${esc(s.name)}</label>`,
         )
         .join("")
-    : "";
+    : `<div class="alert">${cls ? "该班还没有学生，请先添加学生。" : "选择班级后，将显示该班全部学生并默认全选。"}</div>`;
   taskSummary();
 }
 function taskSummary() {
-  const f = $("#task-form");
-  if (!f) return;
-  const d = new FormData(f),
-    words = d.getAll("wordIds").length,
-    classes = d.getAll("classIds");
+  const form = $("#task-form");
+  if (!form) return;
+  const data = new FormData(form),
+    cls = state.classes.find((c) => c.id === data.get("classId"));
+  const selected = data.getAll("studentIds").length,
+    total = cls ? state.students.filter((s) => s.classId === cls.id).length : 0;
+  const words = data.getAll("wordIds").length;
+  $("#task-audience-count").textContent = cls
+    ? `已选 ${selected} / ${total} 人${selected === total && total ? " · 全班参加" : ""}`
+    : "";
   $("#task-summary").textContent =
-    `已选择 ${words} 个场景词汇 · ${classes.length} 个班级 · ${state.students.filter((s) => classes.includes(s.classId)).length} 位班级学生`;
+    `已选择 ${words} 个场景词汇 · ${cls ? cls.name : "未选择班级"} · ${selected} 人参加`;
+  const submit = document.querySelector('[form="task-form"][type="submit"]');
+  if (submit)
+    submit.disabled = !cls || !data.get("subject") || !selected || !words;
 }
 function createClass() {
   modal(
@@ -1021,6 +1042,13 @@ document.addEventListener("click", async (e) => {
         input?.select();
         toast("请复制已选中的考试链接。");
       }
+      return;
+    }
+    if (action === "select-all-students") {
+      const inputs = $$('#task-students input[name="studentIds"]');
+      const checked = !inputs.every((input) => input.checked);
+      for (const input of inputs) input.checked = checked;
+      taskSummary();
       return;
     }
     if (action === "create-task") return createTask();
@@ -1411,15 +1439,29 @@ document.addEventListener("submit", async (e) => {
       invitesModal(r.students);
     }
     if (form.id === "task-form") {
-      const fd = new FormData(form);
+      const fd = new FormData(form),
+        cls = state.classes.find((c) => c.id === data.classId);
+      if (!cls) throw new Error("请选择班级。");
+      if (!cls.courses?.some((c) => c.subject === data.subject))
+        throw new Error("请选择该班已配置的科目。");
+      const studentIds = fd.getAll("studentIds"),
+        students = state.students.filter((s) => s.classId === cls.id);
+      if (!studentIds.length) throw new Error("请至少选择一名参加学生。");
+      if (
+        studentIds.some((id) => !students.some((student) => student.id === id))
+      )
+        throw new Error("所选学生不属于该班级。");
       const payload = {
-        ...data,
+        title: data.title,
+        program: cls.program,
+        subject: data.subject,
+        mode: data.mode,
         opensAt: new Date(data.opensAt).toISOString(),
         closesAt: new Date(data.closesAt).toISOString(),
         duration: Number(data.duration),
-        classIds: fd.getAll("classIds"),
+        classIds: [cls.id],
         wordIds: fd.getAll("wordIds"),
-        audience: data.audienceMode === "all" ? "all" : fd.getAll("studentIds"),
+        audience: studentIds.length === students.length ? "all" : studentIds,
       };
       const days = Number(data.repeatDays);
       if (!Number.isInteger(days) || days < 1 || days > 30)
@@ -1538,8 +1580,8 @@ document.addEventListener("change", (e) => {
     if (el.dataset.filter === "program") state.filter.classId = "all";
     $("#main-view").innerHTML = content();
   }
-  if (el.dataset.change === "task-filters") taskFilters();
-  if (el.dataset.change === "task-audience") taskAudience();
+  if (el.dataset.change === "task-class") taskFilters();
+  if (el.dataset.change === "task-words") taskWords();
   if (el.dataset.change === "task-summary") taskSummary();
 });
 document.addEventListener("keydown", (e) => {
