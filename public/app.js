@@ -363,12 +363,12 @@ function visibleResults() {
 function resultsView() {
   const rows = visibleResults(),
     done = rows.filter((r) => r.score !== null);
-  return `${heading("成绩分析", "看见每次提交，也看见需要多一点帮助的学生。", `<button class="btn btn-light" data-action="export-results">${icon("download")}导出成绩 CSV</button>`)}<div class="stats-grid">${stat("应交练习", rows.length, "份", "clipboard", "按当前筛选范围统计")}${stat("已交练习", done.length, "份", "check", `提交率 <strong>${rows.length ? Math.round((done.length / rows.length) * 100) : 0}%</strong>`, "blue")}${stat("平均成绩", mean(done), "分", "chart", "每份听写按 100 分制计分", "gold")}${stat("达到 80 分", done.filter((r) => r.score >= 80).length, "份", "spark", "用于识别当前词汇掌握情况", "purple")}</div>${state.resultTaskId ? `<div class="alert">当前任务：${esc(state.tasks.find((t) => t.id === state.resultTaskId)?.title)} <button class="btn btn-quiet" data-action="clear-task-filter">查看全部任务 ×</button></div>` : ""}${filters({ classes: true, subject: true, search: true })}<div class="panel"><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>项目 / 班级</th><th>听写任务</th><th>成绩</th><th>状态 / 提交时间</th><th>答题详情</th></tr></thead><tbody>${rows.map((r) => `<tr><td><div class="person"><span class="avatar">${esc(r.name.slice(-1))}</span>${esc(r.name)}</div></td><td>${esc(r.className)}<div class="table-secondary">${esc(programShort(r.program))} · ${esc(nameSubject(r.subject))}</div></td><td>${esc(r.taskTitle)}</td><td><span class="score ${r.score !== null && r.score < 60 ? "low" : ""}">${r.score ?? "—"}</span></td><td>${badge({ submitted: r.timedOut ? "超时自动交卷" : "已提交", pending: "待完成", in_progress: "答题中", missing: "未提交" }[r.state], r.state === "missing" ? "red" : r.state === "submitted" ? "" : "blue")}<div class="table-secondary">${r.submittedAt ? date(r.submittedAt) : "—"}</div></td><td>${r.result ? `<button class="btn btn-light btn-sm" data-action="result-detail" data-task="${r.taskId}" data-student="${r.studentId}">查看详情</button>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("暂无成绩记录", "发布任务后，这里会展示每位学生的完成状态。") : ""}</div>`;
+  return `${heading("成绩分析", "看见每次提交，也看见需要多一点帮助的学生。", `<button class="btn btn-light" data-action="export-results">${icon("download")}导出成绩 CSV</button>`)}<div class="stats-grid">${stat("应交练习", rows.length, "份", "clipboard", "按当前筛选范围统计")}${stat("已交练习", done.length, "份", "check", `提交率 <strong>${rows.length ? Math.round((done.length / rows.length) * 100) : 0}%</strong>`, "blue")}${stat("平均成绩", mean(done), "分", "chart", "每份听写按 100 分制计分", "gold")}${stat("达到 80 分", done.filter((r) => r.score >= 80).length, "份", "spark", "用于识别当前词汇掌握情况", "purple")}</div>${state.resultTaskId ? `<div class="alert">当前任务：${esc(state.tasks.find((t) => t.id === state.resultTaskId)?.title)} <button class="btn btn-quiet" data-action="clear-task-filter">查看全部任务 ×</button></div>` : ""}${filters({ classes: true, subject: true, search: true })}<div class="panel"><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>项目 / 班级</th><th>听写任务</th><th>成绩</th><th>考试用时</th><th>状态 / 提交时间</th><th>答题详情</th></tr></thead><tbody>${rows.map((r) => `<tr><td><div class="person"><span class="avatar">${esc(r.name.slice(-1))}</span>${esc(r.name)}</div></td><td>${esc(r.className)}<div class="table-secondary">${esc(programShort(r.program))} · ${esc(nameSubject(r.subject))}</div></td><td>${esc(r.taskTitle)}</td><td><span class="score ${r.score !== null && r.score < 60 ? "low" : ""}">${r.score ?? "—"}</span></td><td><strong>${r.state === "in_progress" ? "答题中" : formatElapsed(r.elapsedSeconds)}</strong></td><td>${badge({ submitted: r.timedOut ? "超时自动交卷" : "已提交", pending: "待完成", in_progress: "答题中", missing: "未提交" }[r.state], r.state === "missing" ? "red" : r.state === "submitted" ? "" : "blue")}<div class="table-secondary">${r.finishedAt ? date(r.finishedAt) : "—"}</div></td><td>${r.result ? `<button class="btn btn-light btn-sm" data-action="result-detail" data-task="${r.taskId}" data-student="${r.studentId}">查看详情</button>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("暂无成绩记录", "发布任务后，这里会展示每位学生的完成状态。") : ""}</div>`;
 }
 function studentTaskCard(t) {
   const [label, color] = statusOf(t),
     done = !!t.attempt?.submittedAt;
-  return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(nameSubject(t.subject))} · ${esc(modeName(t.mode))}</p>${done ? `<div class="student-score">${t.attempt.score}<small> / 100 分</small></div>` : `<div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span></div>`}<p>${icon("clock")} ${t.opensAt > now() ? "开始" : "截止"}：${date(t.opensAt > now() ? t.opensAt : t.closesAt)}</p><div class="assignment-bottom" style="margin-top:18px"><span>${done ? date(t.attempt.submittedAt) : "提交后自动整理错题"}</span><button class="btn ${done ? "btn-light" : "btn-primary"} btn-sm" data-action="${done ? "student-result" : "start-task"}" data-id="${t.id}" ${!done && (t.opensAt > now() || t.closesAt <= now()) ? "disabled" : ""}>${done ? "查看结果" : t.attempt ? "继续答题" : t.opensAt > now() ? "等待开始" : t.closesAt <= now() ? "已截止" : "开始测试"} ${icon("arrow")}</button></div></article>`;
+  return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(nameSubject(t.subject))} · ${esc(modeName(t.mode))}</p>${done ? `<div class="student-score">${t.attempt.score}<small> / 100 分</small></div>` : `<div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span></div>`}<p>${icon("clock")} ${t.opensAt > now() ? "开始" : "截止"}：${date(t.opensAt > now() ? t.opensAt : t.closesAt)}</p><div class="assignment-bottom" style="margin-top:18px"><span>${done ? `用时 ${formatElapsed(t.attempt.elapsedSeconds)}` : "提交后自动整理错题"}</span><button class="btn ${done ? "btn-light" : "btn-primary"} btn-sm" data-action="${done ? "student-result" : "start-task"}" data-id="${t.id}" ${!done && (t.opensAt > now() || t.closesAt <= now()) ? "disabled" : ""}>${done ? "查看结果" : t.attempt ? "继续答题" : t.opensAt > now() ? "等待开始" : t.closesAt <= now() ? "已截止" : "开始测试"} ${icon("arrow")}</button></div></article>`;
 }
 function studentDashboard() {
   const pending = state.tasks.filter(
@@ -419,6 +419,16 @@ function examView() {
   const a = state.attempt;
   return `<div class="exam-layout"><div class="exam-top"><div><span class="eyebrow">CONTEXTUAL PRACTICE</span><h2>${esc(a.task.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p></div><div class="exam-clock mono" id="exam-clock">--:--</div></div><div class="alert">请翻译场景句中高亮的词汇或短语。答题框已关闭浏览器自动纠错、拼写检查和自动补全；请同时关闭输入法的联想纠错。到时会按服务端已保存答案自动交卷。</div><div class="exam-progress"><div id="exam-progress-fill" style="width:${(Object.values(a.attempt.answers).filter((v) => v.trim()).length / a.questions.length) * 100}%"></div></div><form id="exam-form">${a.questions.map((q, i) => `<article class="question-card"><div class="question-label"><span>QUESTION ${String(i + 1).padStart(2, "0")} / ${String(a.questions.length).padStart(2, "0")}</span>${badge(modeName(q.direction), "gray")}</div><h3>${q.direction === "zh-en" ? "请写出高亮词汇对应的英文" : q.direction === "choice" ? "请选择高亮词汇在本句中的含义" : "请写出高亮词汇在本句中的中文含义"}</h3><div class="question-prompt">${highlight(q.prompt, q.focus)}</div>${q.direction !== "zh-en" ? `<button class="btn btn-quiet" type="button" data-action="speak-question" data-id="${q.id}">${icon("volume")}朗读场景句</button>` : ""}${q.choices ? q.choices.map((c, j) => `<label class="choice-label"><input type="radio" name="${q.id}" value="${esc(c)}" ${a.attempt.answers[q.id] === c ? "checked" : ""}><span>${String.fromCharCode(65 + j)}.</span>${esc(c)}</label>`).join("") : `<label class="form-field"><span class="visually-hidden">第 ${i + 1} 题答案</span><input name="${q.id}" type="text" lang="${q.direction === "zh-en" ? "en" : "zh-CN"}" ${answerAttrs} maxlength="2000" placeholder="${q.direction === "zh-en" ? "在此输入英文词汇或短语…" : "在此输入中文释义…"}" value="${esc(a.attempt.answers[q.id] || "")}"></label>`}</article>`).join("")}<div class="exam-sticky"><div><div class="save-indicator" id="save-indicator">${icon("shield")} 已保存到服务器</div><small class="muted" id="answered-count">已作答 ${Object.values(a.attempt.answers).filter((v) => v.trim()).length} / ${a.questions.length} 题</small></div><button type="button" class="btn btn-primary" data-action="confirm-submit" id="submit-button">提交本次听写 ${icon("arrow")}</button></div></form></div>`;
 }
+function formatElapsed(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  const total = Math.floor(seconds);
+  const hours = Math.floor(total / 3600),
+    minutes = Math.floor((total % 3600) / 60);
+  return `${hours ? `${hours}小时` : ""}${minutes || hours ? `${minutes}分` : ""}${total % 60}秒`;
+}
+function timingSummary(attempt) {
+  return `<p class="muted">开始：${attempt.startedAt ? date(attempt.startedAt, true) : "—"}<br>交卷：${attempt.finishedAt ? date(attempt.finishedAt, true) : "—"}<br>考试用时：<strong>${formatElapsed(attempt.elapsedSeconds)}</strong>${attempt.timedOut ? " · 到时自动提交" : ""}</p>`;
+}
 function resultBody(result) {
   return result.results
     .map(
@@ -430,7 +440,7 @@ function resultBody(result) {
 function resultView() {
   const { attempt: a, task } = state.examResult,
     r = a.result;
-  return `<div class="exam-layout"><div class="result-hero"><span class="eyebrow">PRACTICE COMPLETE</span><h2>${esc(state.user.name)}，本次听写已提交。</h2><div class="result-number mono">${a.score}<small>分</small></div><p>${esc(task.title)} · 答对 ${r.correct} / ${r.total} 题</p><p>${date(a.submittedAt, true)}${a.timedOut ? " · 到时自动提交" : ""}</p><div class="result-actions"><button class="btn btn-light" data-action="finish-result">返回我的学习</button><button class="btn btn-primary" data-action="result-review">${icon("repeat")}去错题本复习</button></div></div>${resultBody(r)}</div>`;
+  return `<div class="exam-layout"><div class="result-hero"><span class="eyebrow">PRACTICE COMPLETE</span><h2>${esc(state.user.name)}，本次听写已提交。</h2><div class="result-number mono">${a.score}<small>分</small></div><p>${esc(task.title)} · 答对 ${r.correct} / ${r.total} 题</p>${timingSummary(a)}<div class="result-actions"><button class="btn btn-light" data-action="finish-result">返回我的学习</button><button class="btn btn-primary" data-action="result-review">${icon("repeat")}去错题本复习</button></div></div>${resultBody(r)}</div>`;
 }
 function accountView() {
   return `${heading("账号设置", "姓名账号由老师登记，密码可以由你自己修改。")}
@@ -1172,8 +1182,8 @@ document.addEventListener("click", async (e) => {
       );
       modal(
         `${r.name} · ${r.score} 分`,
-        `${r.className} · ${r.taskTitle} · ${date(r.submittedAt, true)}`,
-        resultBody(r.result),
+        `${r.className} · ${r.taskTitle} · ${date(r.finishedAt || r.submittedAt, true)}`,
+        timingSummary(r) + resultBody(r.result),
         "",
         true,
       );
@@ -1290,6 +1300,10 @@ document.addEventListener("click", async (e) => {
             "状态",
             "提交时间",
             "超时交卷",
+            "开始时间",
+            "有效交卷时间",
+            "考试用时（秒）",
+            "考试用时",
           ],
           ...visibleResults().map((r) => [
             r.name,
@@ -1306,6 +1320,12 @@ document.addEventListener("click", async (e) => {
             }[r.state],
             r.submittedAt ? new Date(r.submittedAt).toISOString() : "",
             r.timedOut ? "是" : "否",
+            r.startedAt ? new Date(r.startedAt).toISOString() : "",
+            r.finishedAt ? new Date(r.finishedAt).toISOString() : "",
+            r.elapsedSeconds ?? "",
+            Number.isFinite(r.elapsedSeconds)
+              ? formatElapsed(r.elapsedSeconds)
+              : "",
           ]),
         ]),
       );

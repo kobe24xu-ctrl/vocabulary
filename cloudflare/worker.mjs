@@ -18,6 +18,7 @@ import {
 } from "../lib/words.mjs";
 import {
   buildQuestions,
+  attemptTiming,
   publicQuestion,
   mark,
   isCorrect,
@@ -103,7 +104,7 @@ function attemptView(a) {
   return {
     id: a.id,
     taskId: a.task_id,
-    startedAt: a.started_at,
+    ...attemptTiming(a.started_at, a.submitted_at, a.deadline),
     deadline: a.deadline,
     answers: json(a.answers),
     submittedAt: a.submitted_at,
@@ -1302,6 +1303,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
                 : Date.now() >= t.closes_at
                   ? "missing"
                   : "pending",
+            ...attemptTiming(a?.started_at, a?.submitted_at, a?.deadline),
             score: a?.score ?? null,
             submittedAt: a?.submitted_at ?? null,
             timedOut: !!a?.timed_out,

@@ -59,6 +59,10 @@
   const attemptFor = (tid, sid) =>
     db.attempts.find((a) => a.taskId === tid && a.studentId === sid);
 
+  const attemptView = (a) =>
+    a
+      ? { ...a, ...attemptTiming(a.startedAt, a.submittedAt, a.deadline) }
+      : null;
   function finish(attempt, answers, timedOut = false) {
     if (attempt.submittedAt) return attempt;
     const task = db.tasks.find((t) => t.id === attempt.taskId);
@@ -571,7 +575,7 @@
           .map((t) => {
             const task = taskView(t);
             if (u.role === "student")
-              return { ...task, attempt: attemptFor(t.id, u.id) || null };
+              return { ...task, attempt: attemptView(attemptFor(t.id, u.id)) };
             const students = db.users.filter(
                 (s) => s.role === "student" && allowed(t, s),
               ),
@@ -618,7 +622,7 @@
       }
       return {
         task: taskView(task),
-        attempt: a,
+        attempt: attemptView(a),
         questions: a.submittedAt ? [] : task.questions.map(publicQuestion),
         serverTime: Date.now(),
       };
@@ -630,13 +634,14 @@
         (a) => a.id === attemptRoute[1] && a.studentId === u.id,
       );
       if (!a) reject("未找到答题记录。", 404);
-      if (a.submittedAt) return { attempt: a };
+      if (a.submittedAt) return { attempt: attemptView(a) };
       if (Date.now() >= a.deadline)
-        return { attempt: finish(a, a.answers, true) };
+        return { attempt: attemptView(finish(a, a.answers, true)) };
       if (!body.answers || typeof body.answers !== "object")
         reject("答案格式不正确。");
       a.answers = body.answers;
-      if (attemptRoute[2]) return { attempt: finish(a, a.answers) };
+      if (attemptRoute[2])
+        return { attempt: attemptView(finish(a, a.answers)) };
       return { savedAt: Date.now(), serverTime: Date.now() };
     }
     if (path === "/api/results") {
@@ -663,6 +668,7 @@
                     : Date.now() >= t.closesAt
                       ? "missing"
                       : "pending",
+                ...attemptTiming(a?.startedAt, a?.submittedAt, a?.deadline),
                 score: a?.score ?? null,
                 submittedAt: a?.submittedAt || null,
                 timedOut: a?.timedOut || false,
