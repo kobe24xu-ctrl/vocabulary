@@ -261,6 +261,7 @@ function filters({
   program = true,
   classes = false,
   subject = false,
+  subjectOptions = state.config.subjects,
   search = false,
 } = {}) {
   return `<div class="toolbar">${search ? `<div class="search-field">${icon("search")}<input data-filter="search" aria-label="搜索" placeholder="搜索${state.view === "students" ? "姓名" : "名称或词汇"}…" value="${esc(state.filter.search)}"></div>` : ""}${program ? `<select data-filter="program" aria-label="按课程项目筛选">${option("all", "全部课程项目", state.filter.program)}${state.config.programs.map((p) => option(p, p, state.filter.program)).join("")}</select>` : ""}${
@@ -274,7 +275,7 @@ function filters({
           .map((c) => option(c.id, c.name, state.filter.classId))
           .join("")}</select>`
       : ""
-  }${subject ? `<select data-filter="subject" aria-label="按科目筛选">${option("all", "全部科目", state.filter.subject)}${state.config.subjects.map((s) => option(s, nameSubject(s), state.filter.subject)).join("")}</select>` : ""}</div>`;
+  }${subject ? `<select data-filter="subject" aria-label="按科目筛选">${option("all", "全部科目", state.filter.subject)}${subjectOptions.map((s) => option(s, nameSubject(s), state.filter.subject)).join("")}</select>` : ""}</div>`;
 }
 function filteredTasks() {
   return state.tasks.filter(
@@ -312,7 +313,26 @@ function studentsView() {
   );
   return `${heading("学生名单", "每一位学生的练习与进步，都有迹可循。", `<button class="btn btn-light" data-action="export-students">${icon("download")}导出名单</button><button class="btn btn-primary" data-action="add-students">${icon("plus")}添加学生</button>`)}${filters({ classes: true, search: true })}<div class="panel"><div class="panel-header"><h2>班级学生 <small class="muted">&nbsp; ${rows.length} 位</small></h2><span class="muted" style="font-size:10px">学生通过账号登录，考试与错题跨设备保存</span></div><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>网页账号</th><th>课程项目 / 班级</th><th>完成听写</th><th>平均成绩</th><th>待复习错词</th><th>学习入口</th></tr></thead><tbody>${rows.map((s) => `<tr><td><div class="person"><span class="avatar">${esc(s.name.slice(-1))}</span><strong>${esc(s.name)}</strong></div></td><td>${esc(s.username || "尚未开通")}<div class="table-secondary">${s.accountReady ? "已开通" : "等待学生开通"}</div></td><td>${esc(clsName(s.classId))}<div class="table-secondary">${esc(s.program)}</div></td><td>${s.attempts} 次</td><td><span class="score ${s.average !== null && s.average < 60 ? "low" : ""}">${s.average ?? "—"}</span>${s.average !== null ? ' <small class="muted">分</small>' : ""}</td><td>${s.mistakes ? badge(`${s.mistakes} 个`, "gold") : '<span class="muted">暂无</span>'}</td><td><button class="btn btn-light btn-sm" data-action="student-invite" data-id="${s.id}">${icon("repeat")}重置并获取入口</button></td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("这里还没有学生", "先创建班级，再批量添加学生姓名。") : ""}</div>`;
 }
+function wordSubjects(program) {
+  if (program === "all") return state.config.subjects;
+  const available = new Set([
+    ...state.classes
+      .filter((c) => c.program === program)
+      .flatMap((c) => (c.courses || []).map((course) => course.subject)),
+    ...state.words.filter((w) => w.program === program).map((w) => w.subject),
+  ]);
+  return state.config.subjects.filter((subject) => available.has(subject));
+}
 function wordsView() {
+  const subjects = wordSubjects(state.filter.program);
+  if (
+    state.filter.subject !== "all" &&
+    !subjects.includes(state.filter.subject)
+  ) {
+    state.filter.subject = "all";
+    state.filter.group = "all";
+    state.wordLimit = 60;
+  }
   const groups = [
     ...new Set(
       state.words
@@ -331,6 +351,7 @@ function wordsView() {
     : "all";
   const words = state.words.filter(
     (w) =>
+      subjects.includes(w.subject) &&
       (state.filter.subject === "all" || w.subject === state.filter.subject) &&
       (state.filter.program === "all" ||
         w.program === state.filter.program ||
@@ -340,7 +361,7 @@ function wordsView() {
         .toLowerCase()
         .includes(state.filter.search.toLowerCase()),
   );
-  return `${heading("课程词库", "从专业词汇到真实题干，让理解多走一步。", `<button class="btn btn-light" data-action="import-words">${icon("upload")}批量导入</button><button class="btn btn-primary" data-action="add-word">${icon("plus")}添加词汇</button>`)}<div class="alert">${icon("book")} 内置内容为自编场景示例，并非 UNSW、NCUK 或 UOW 官方课程词表。请按实际教材和授课范围补充词汇。中文答案按老师设置的释义及可接受答案匹配。</div>${filters({ subject: true, search: true })}<div class="toolbar"><select data-filter="group" aria-label="按周次或单元筛选">${option("all", "全部周次 / 单元", group)}${groups.map((g) => option(g, g, group)).join("")}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, state.wordLimit || 60)} 条</span></div><div class="cards-grid">${words
+  return `${heading("课程词库", "从专业词汇到真实题干，让理解多走一步。", `<button class="btn btn-light" data-action="import-words">${icon("upload")}批量导入</button><button class="btn btn-primary" data-action="add-word">${icon("plus")}添加词汇</button>`)}<div class="alert">${icon("book")} 内置内容为自编场景示例，并非 UNSW、NCUK 或 UOW 官方课程词表。请按实际教材和授课范围补充词汇。中文答案按老师设置的释义及可接受答案匹配。</div>${filters({ subject: true, subjectOptions: subjects, search: true })}<div class="toolbar"><select data-filter="group" aria-label="按周次或单元筛选">${option("all", "全部周次 / 单元", group)}${groups.map((g) => option(g, g, group)).join("")}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, state.wordLimit || 60)} 条</span></div><div class="cards-grid">${words
     .slice(0, state.wordLimit || 60)
     .map(
       (w) =>
