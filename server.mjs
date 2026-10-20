@@ -221,6 +221,14 @@ function validateWord(raw) {
     aliases: Array.isArray(raw.aliases)
       ? raw.aliases.map((a) => required(a, "可接受答案", 150)).slice(0, 20)
       : [],
+    enAliases: Array.isArray(raw.enAliases)
+      ? raw.enAliases
+          .map((a) => required(a, "英文可接受答案", 150))
+          .slice(0, 20)
+      : [],
+    groups: Array.isArray(raw.groups)
+      ? raw.groups.map((g) => required(g, "周次或单元", 100)).slice(0, 30)
+      : [],
     source: raw.source?.trim().slice(0, 200) || "教师自建词汇",
   };
   if (![...PROGRAMS, "通用示例"].includes(word.program))

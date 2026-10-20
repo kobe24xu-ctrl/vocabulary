@@ -313,17 +313,42 @@ function studentsView() {
   return `${heading("学生名单", "每一位学生的练习与进步，都有迹可循。", `<button class="btn btn-light" data-action="export-students">${icon("download")}导出名单</button><button class="btn btn-primary" data-action="add-students">${icon("plus")}添加学生</button>`)}${filters({ classes: true, search: true })}<div class="panel"><div class="panel-header"><h2>班级学生 <small class="muted">&nbsp; ${rows.length} 位</small></h2><span class="muted" style="font-size:10px">学生通过账号登录，考试与错题跨设备保存</span></div><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>网页账号</th><th>课程项目 / 班级</th><th>完成听写</th><th>平均成绩</th><th>待复习错词</th><th>学习入口</th></tr></thead><tbody>${rows.map((s) => `<tr><td><div class="person"><span class="avatar">${esc(s.name.slice(-1))}</span><strong>${esc(s.name)}</strong></div></td><td>${esc(s.username || "尚未开通")}<div class="table-secondary">${s.accountReady ? "已开通" : "等待学生开通"}</div></td><td>${esc(clsName(s.classId))}<div class="table-secondary">${esc(s.program)}</div></td><td>${s.attempts} 次</td><td><span class="score ${s.average !== null && s.average < 60 ? "low" : ""}">${s.average ?? "—"}</span>${s.average !== null ? ' <small class="muted">分</small>' : ""}</td><td>${s.mistakes ? badge(`${s.mistakes} 个`, "gold") : '<span class="muted">暂无</span>'}</td><td><button class="btn btn-light btn-sm" data-action="student-invite" data-id="${s.id}">${icon("repeat")}重置并获取入口</button></td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("这里还没有学生", "先创建班级，再批量添加学生姓名。") : ""}</div>`;
 }
 function wordsView() {
+  const groups = [
+    ...new Set(
+      state.words
+        .filter(
+          (w) =>
+            (state.filter.subject === "all" ||
+              w.subject === state.filter.subject) &&
+            (state.filter.program === "all" ||
+              w.program === state.filter.program),
+        )
+        .flatMap((w) => w.groups || []),
+    ),
+  ].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  const group = groups.includes(state.filter.group)
+    ? state.filter.group
+    : "all";
   const words = state.words.filter(
     (w) =>
       (state.filter.subject === "all" || w.subject === state.filter.subject) &&
       (state.filter.program === "all" ||
         w.program === state.filter.program ||
         w.program === "通用示例") &&
+      (group === "all" || (w.groups || []).includes(group)) &&
       `${w.term} ${w.translation}`
         .toLowerCase()
         .includes(state.filter.search.toLowerCase()),
   );
-  return `${heading("课程词库", "从专业词汇到真实题干，让理解多走一步。", `<button class="btn btn-light" data-action="import-words">${icon("upload")}批量导入</button><button class="btn btn-primary" data-action="add-word">${icon("plus")}添加词汇</button>`)}<div class="alert">${icon("book")} 内置内容为自编场景示例，并非 UNSW、NCUK 或 UOW 官方课程词表。请按实际教材和授课范围补充词汇。中文答案按老师设置的释义及可接受答案匹配。</div>${filters({ subject: true, search: true })}<div class="cards-grid">${words.map((w) => `<article class="word-card">${badge(nameSubject(w.subject), "gray")} ${badge(w.program === "通用示例" ? "通用场景" : programShort(w.program))}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9;margin-bottom:14px">${esc(w.sentenceZh)}</p><footer><span>${esc(w.source)}</span><button class="btn btn-quiet" data-action="speak-word" data-id="${w.id}" title="朗读英文场景句">${icon("volume")}</button></footer></article>`).join("")}</div>${!words.length ? empty("还没有匹配的词汇", "添加本学科词汇和场景句，或调整筛选条件。") : ""}`;
+  return `${heading("课程词库", "从专业词汇到真实题干，让理解多走一步。", `<button class="btn btn-light" data-action="import-words">${icon("upload")}批量导入</button><button class="btn btn-primary" data-action="add-word">${icon("plus")}添加词汇</button>`)}<div class="alert">${icon("book")} 内置内容为自编场景示例，并非 UNSW、NCUK 或 UOW 官方课程词表。请按实际教材和授课范围补充词汇。中文答案按老师设置的释义及可接受答案匹配。</div>${filters({ subject: true, search: true })}<div class="toolbar"><select data-filter="group" aria-label="按周次或单元筛选">${option("all", "全部周次 / 单元", group)}${groups.map((g) => option(g, g, group)).join("")}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, state.wordLimit || 60)} 条</span></div><div class="cards-grid">${words
+    .slice(0, state.wordLimit || 60)
+    .map(
+      (w) =>
+        `<article class="word-card">${badge(nameSubject(w.subject), "gray")} ${badge(w.program === "通用示例" ? "通用场景" : programShort(w.program))}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9;margin-bottom:14px">${esc(w.sentenceZh)}</p><footer><span>${esc(w.source)}</span><button class="btn btn-quiet" data-action="speak-word" data-id="${w.id}" title="朗读英文场景句">${icon("volume")}</button></footer></article>`,
+    )
+    .join(
+      "",
+    )}</div>${words.length > (state.wordLimit || 60) ? `<button class="btn btn-light" data-action="more-words">加载更多词汇</button>` : ""}${!words.length ? empty("还没有匹配的词汇", "添加本学科词汇和场景句，或调整筛选条件。") : ""}`;
 }
 function visibleResults() {
   return state.results.filter(
@@ -624,7 +649,7 @@ function createTask() {
       .map(([v, l]) => option(v, l, "mixed"))
       .join(
         "",
-      )}</select></label>${field("答题时长（分钟，1–180）", "duration", "number", "", true, "15")}<div class="full">${field("按相同时间连续发布几天（1–30）", "repeatDays", "number", "", true, "1")}</div><label class="form-field"><span>开放时间</span><input name="opensAt" type="datetime-local" value="${fmtLocal(Date.now())}" required></label><label class="form-field"><span>截止时间</span><input name="closesAt" type="datetime-local" value="${fmtLocal(Date.now() + 86400000)}" required></label></div><div class="form-section">01 &nbsp; 参加学生 · 默认全选 <button type="button" class="btn btn-quiet" data-action="select-all-students">全选 / 取消全选</button></div><div id="task-students" class="check-list"></div><p class="muted" id="task-audience-count"></p><div class="form-section">02 &nbsp; 场景词汇 <button type="button" class="btn btn-quiet" data-action="select-all-words">全选 / 取消</button></div><div class="check-list" id="task-words"></div><p class="task-summary" id="task-summary"></p><div class="alert" style="margin-top:17px;margin-bottom:0">任务发布后即按预约时间开放。学生开始后计时，截止时间与答题时长先到者为准；超时按服务端已保存答案自动评分。</div></form>`,
+      )}</select></label>${field("答题时长（分钟，1–180）", "duration", "number", "", true, "15")}<div class="full">${field("按相同时间连续发布几天（1–30）", "repeatDays", "number", "", true, "1")}</div><label class="form-field"><span>开放时间</span><input name="opensAt" type="datetime-local" value="${fmtLocal(Date.now())}" required></label><label class="form-field"><span>截止时间</span><input name="closesAt" type="datetime-local" value="${fmtLocal(Date.now() + 86400000)}" required></label></div><div class="form-section">01 &nbsp; 参加学生 · 默认全选 <button type="button" class="btn btn-quiet" data-action="select-all-students">全选 / 取消全选</button></div><div id="task-students" class="check-list"></div><p class="muted" id="task-audience-count"></p><div class="form-section">02 &nbsp; 场景词汇 <button type="button" class="btn btn-quiet" data-action="select-all-words">全选 / 取消</button></div><label class="form-field"><span>词汇周次 / 单元</span><select name="wordGroup" data-change="task-words" disabled></select><small>每份任务最多 100 个词汇；可按周次、单元分批发布。</small></label><div class="check-list" id="task-words"></div><p class="task-summary" id="task-summary"></p><div class="alert" style="margin-top:17px;margin-bottom:0">任务发布后即按预约时间开放。学生开始后计时，截止时间与答题时长先到者为准；超时按服务端已保存答案自动评分。</div></form>`,
     `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="task-form">${icon("check")}确认发布</button>`,
     true,
   );
@@ -658,7 +683,7 @@ function taskWords() {
   if (!form) return;
   const cls = state.classes.find((c) => c.id === form.elements.classId.value),
     subject = form.elements.subject.value;
-  const words =
+  const available =
     cls && subject
       ? state.words.filter(
           (w) =>
@@ -666,11 +691,30 @@ function taskWords() {
             (w.program === "通用示例" || w.program === cls.program),
         )
       : [];
+  const groupSelect = form.elements.wordGroup;
+  const scope = `${cls?.id || ""}:${subject}`;
+  const groups = [...new Set(available.flatMap((w) => w.groups || []))].sort(
+    (a, b) => a.localeCompare(b, "en", { numeric: true }),
+  );
+  const previous = groupSelect.value;
+  const selectedGroup =
+    groupSelect.dataset.scope === scope &&
+    (previous === "all" || groups.includes(previous))
+      ? previous
+      : groups[0] || "all";
+  groupSelect.innerHTML =
+    option("all", "全部周次 / 单元", selectedGroup) +
+    groups.map((g) => option(g, g, selectedGroup)).join("");
+  groupSelect.dataset.scope = scope;
+  groupSelect.disabled = !available.length;
+  const words = available.filter(
+    (w) => selectedGroup === "all" || (w.groups || []).includes(selectedGroup),
+  );
   $("#task-words").innerHTML = words.length
     ? words
         .map(
-          (w) =>
-            `<label class="check-item word-choice"><input type="checkbox" name="wordIds" value="${w.id}" data-change="task-summary" checked><span><strong>${esc(w.term)}</strong><small>${esc(w.translation)} · ${w.program === "通用示例" ? "自编示例" : "教师词库"}</small></span></label>`,
+          (w, index) =>
+            `<label class="check-item word-choice"><input type="checkbox" name="wordIds" value="${w.id}" data-change="task-summary" ${index < 100 ? "checked" : ""}><span><strong>${esc(w.term)}</strong><small>${esc(w.translation)} · ${w.program === "通用示例" ? "自编示例" : "教师词库"}</small></span></label>`,
         )
         .join("")
     : `<div class="alert">${!cls ? "请先选择班级。" : !cls.courses?.length ? "请先到班级管理中配置该班科目。" : !subject ? "请选择该班的科目。" : "这个科目暂无词汇，请先添加词汇与场景句。"}</div>`;
@@ -705,10 +749,11 @@ function taskSummary() {
     ? `已选 ${selected} / ${total} 人${selected === total && total ? " · 全班参加" : ""}`
     : "";
   $("#task-summary").textContent =
-    `已选择 ${words} 个场景词汇 · ${cls ? cls.name : "未选择班级"} · ${selected} 人参加`;
+    `已选择 ${words} / 100 个场景词汇 · ${cls ? cls.name : "未选择班级"} · ${selected} 人参加`;
   const submit = document.querySelector('[form="task-form"][type="submit"]');
   if (submit)
-    submit.disabled = !cls || !data.get("subject") || !selected || !words;
+    submit.disabled =
+      !cls || !data.get("subject") || !selected || !words || words > 100;
 }
 function createClass() {
   modal(
@@ -754,7 +799,7 @@ function importWords() {
   modal(
     "批量导入词库",
     "上传 UTF-8 CSV，或下载模板后填写正式课程词汇。",
-    `<form id="import-form"><div class="alert">必填列：program, subject, term, translation, sentence, sentenceZh<br>可选列：aliases（分号分隔）、source。项目和科目请使用模板中的完整名称。每批最多 300 条。</div><button class="btn btn-light" type="button" data-action="word-template">${icon("download")}下载 CSV 模板</button><div class="file-input"><label class="form-field"><span>选择词库 CSV 文件</span><input name="csv" type="file" accept=".csv,text/csv" required></label></div></form>`,
+    `<form id="import-form"><div class="alert">必填列：program, subject, term, translation, sentence, sentenceZh<br>可选列：aliases（中文别名）、enAliases（英文别名）、groups（周次或单元，以上均用分号分隔）、source。项目和科目请使用模板中的完整名称。每批最多 300 条。</div><button class="btn btn-light" type="button" data-action="word-template">${icon("download")}下载 CSV 模板</button><div class="file-input"><label class="form-field"><span>选择词库 CSV 文件</span><input name="csv" type="file" accept=".csv,text/csv" required></label></div></form>`,
     `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="import-form">导入并校验</button>`,
   );
 }
@@ -828,7 +873,7 @@ function parseCSV(text) {
     return Object.fromEntries(
       headers.map((h, j) => [
         h,
-        h === "aliases"
+        ["aliases", "enAliases", "groups"].includes(h)
           ? r[j]
               .split(/[;；]/)
               .map((v) => v.trim())
@@ -1103,10 +1148,17 @@ document.addEventListener("click", async (e) => {
       );
       return;
     }
+    if (action === "more-words") {
+      state.wordLimit = (state.wordLimit || 60) + 60;
+      $("#main-view").innerHTML = content();
+      return;
+    }
     if (action === "select-all-words") {
       const inputs = $$("#task-words input"),
-        checked = inputs.some((i) => !i.checked);
-      inputs.forEach((i) => (i.checked = checked));
+        checked = !inputs.slice(0, 100).every((i) => i.checked);
+      inputs.forEach((i, index) => (i.checked = checked && index < 100));
+      if (checked && inputs.length > 100)
+        toast("每份最多 100 个词汇，已勾选前 100 个；可按周次或单元分批发布。");
       taskSummary();
       return;
     }
@@ -1553,6 +1605,7 @@ document.addEventListener("input", (e) => {
   }
   if (el.dataset.filter === "search") {
     state.filter.search = el.value;
+    state.wordLimit = 60;
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       const pos = el.selectionStart;
@@ -1577,6 +1630,9 @@ document.addEventListener("change", (e) => {
   const el = e.target;
   if (el.dataset.filter && el.dataset.filter !== "search") {
     state.filter[el.dataset.filter] = el.value;
+    state.wordLimit = 60;
+    if (["program", "subject"].includes(el.dataset.filter))
+      state.filter.group = "all";
     if (el.dataset.filter === "program") state.filter.classId = "all";
     $("#main-view").innerHTML = content();
   }
