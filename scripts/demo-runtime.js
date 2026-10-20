@@ -551,6 +551,15 @@
         throw e;
       }
     }
+    const deleteTask = path.match(/^\/api\/tasks\/([^/]+)$/);
+    if (deleteTask && method === "DELETE") {
+      requireUser("teacher");
+      if (!db.tasks.some((t) => t.id === deleteTask[1]))
+        reject("考试不存在或已删除。", 404);
+      db.attempts = db.attempts.filter((a) => a.taskId !== deleteTask[1]);
+      db.tasks = db.tasks.filter((t) => t.id !== deleteTask[1]);
+      return { ok: true };
+    }
     if (path === "/api/tasks") {
       if (method === "POST") {
         requireUser("teacher");

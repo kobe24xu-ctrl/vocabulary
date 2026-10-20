@@ -1114,6 +1114,33 @@ function service(env, request, headers = new Headers(SECURITY)) {
         ? { tasks: data.map((d) => taskView(d.task)) }
         : { task: taskView(data[0].task) };
     }
+    const deleteTask = path.match(/^\/api\/tasks\/([^/]+)$/);
+    if (deleteTask && method === "DELETE") {
+      teacher(u);
+      if (
+        !(await one(
+          "SELECT id FROM tasks WHERE id=? AND owner_id=?",
+          deleteTask[1],
+          u.id,
+        ))
+      )
+        fail(404, "考试不存在或已删除。");
+      // D1 batches are atomic: remove attempts before their parent task.
+      // Mistakes are shared across exams and remain available for review.
+      await batch([
+        statement(
+          "DELETE FROM attempts WHERE task_id IN (SELECT id FROM tasks WHERE id=? AND owner_id=?)",
+          deleteTask[1],
+          u.id,
+        ),
+        statement(
+          "DELETE FROM tasks WHERE id=? AND owner_id=?",
+          deleteTask[1],
+          u.id,
+        ),
+      ]);
+      return { ok: true };
+    }
     if (path === "/api/tasks" && method === "GET") {
       await sweep(u);
       const rows = await all(

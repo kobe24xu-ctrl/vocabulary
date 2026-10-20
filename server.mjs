@@ -974,6 +974,32 @@ async function api(req, res, url) {
     if (u.role !== "teacher") fail(403, "仅教师可发布任务。");
     return { task: taskCreate(u.id, await body(req)) };
   }
+  const deleteTask = path.match(/^\/api\/tasks\/([^/]+)$/);
+  if (deleteTask && method === "DELETE") {
+    if (u.role !== "teacher") fail(403, "仅 master 可删除考试。");
+    if (
+      !one(
+        "SELECT id FROM tasks WHERE id=? AND owner_id=?",
+        deleteTask[1],
+        u.id,
+      )
+    )
+      fail(404, "考试不存在或已删除。");
+    db.exec("BEGIN");
+    try {
+      run(
+        "DELETE FROM attempts WHERE task_id IN (SELECT id FROM tasks WHERE id=? AND owner_id=?)",
+        deleteTask[1],
+        u.id,
+      );
+      run("DELETE FROM tasks WHERE id=? AND owner_id=?", deleteTask[1], u.id);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    return { ok: true };
+  }
   if (path === "/api/tasks" && method === "GET") {
     const tasks = all(
       "SELECT * FROM tasks WHERE owner_id=? ORDER BY created_at DESC",

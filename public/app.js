@@ -291,7 +291,7 @@ function tasksView() {
   return `${heading("听写任务", "在真实语境中练习，按班级和学生精准布置。", `<button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}${filters({ classes: true, subject: true, search: true })}<div class="cards-grid">${filteredTasks()
     .map((t) => {
       const [label, color] = statusOf(t);
-      return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(t.program)} · ${esc(nameSubject(t.subject))}<br>${t.classIds.map(clsName).map(esc).join("、")} · ${t.audience === "all" ? "所选班级全体" : `${t.audience.length} 位指定学生`}</p><div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span><span>${esc(modeName(t.mode))}</span></div><p>${icon("clock")} ${date(t.opensAt)} — ${date(t.closesAt)}</p><div class="progress-track" style="width:100%;margin:15px 0"><div class="progress-fill" style="width:${t.studentCount ? (t.submitted / t.studentCount) * 100 : 0}%"></div></div><div class="assignment-bottom"><span>${t.submitted} / ${t.studentCount} 人已提交</span><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">考试链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">查看成绩 ${icon("arrow")}</button></div></div></article>`;
+      return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(t.program)} · ${esc(nameSubject(t.subject))}<br>${t.classIds.map(clsName).map(esc).join("、")} · ${t.audience === "all" ? "所选班级全体" : `${t.audience.length} 位指定学生`}</p><div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span><span>${esc(modeName(t.mode))}</span></div><p>${icon("clock")} ${date(t.opensAt)} — ${date(t.closesAt)}</p><div class="progress-track" style="width:100%;margin:15px 0"><div class="progress-fill" style="width:${t.studentCount ? (t.submitted / t.studentCount) * 100 : 0}%"></div></div><div class="assignment-bottom"><span>${t.submitted} / ${t.studentCount} 人已提交</span><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">考试链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">查看成绩 ${icon("arrow")}</button><button class="btn btn-danger btn-sm" data-action="delete-task" data-id="${t.id}">删除考试</button></div></div></article>`;
     })
     .join(
       "",
@@ -1086,6 +1086,37 @@ document.addEventListener("click", async (e) => {
         input?.focus();
         input?.select();
         toast("请复制已选中的考试链接。");
+      }
+      return;
+    }
+    if (action === "delete-task") {
+      if (state.user?.role !== "teacher") return;
+      const task = state.tasks.find((t) => t.id === b.dataset.id);
+      if (!task) return;
+      modal(
+        "删除这次考试？",
+        "删除后无法恢复，请确认考试名称和班级。",
+        `<h3>${esc(task.title)}</h3><p>${esc(task.classIds.map(clsName).join("、"))} · ${esc(nameSubject(task.subject))}</p><div class="alert">将永久删除本次考试、全部答题记录和成绩，并更新成绩统计。考试链接将失效，正在答题的学生也无法继续保存或提交。学生账号、词库和已有错题本保留。连续发布的其他日期考试不会删除。</div>`,
+        `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-danger" data-action="confirm-delete-task" data-id="${task.id}">确认永久删除</button>`,
+      );
+      return;
+    }
+    if (action === "confirm-delete-task") {
+      if (state.user?.role !== "teacher") return;
+      b.disabled = true;
+      try {
+        await api(`/api/tasks/${encodeURIComponent(b.dataset.id)}`, {
+          method: "DELETE",
+        });
+        state.tasks = state.tasks.filter((t) => t.id !== b.dataset.id);
+        state.results = state.results.filter((r) => r.taskId !== b.dataset.id);
+        if (state.resultTaskId === b.dataset.id) state.resultTaskId = null;
+        closeModal();
+        render();
+        toast("考试及其答题记录、成绩已删除。");
+        await refresh();
+      } finally {
+        b.disabled = false;
       }
       return;
     }
