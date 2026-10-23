@@ -30,3 +30,7 @@ npm run cf:pages:deploy
 现有 master 已完成初始化，因此 Pages 不复制或读取原 Worker 的 `SETUP_KEY`，继续使用已有账号登录。不要在新入口重新初始化账号。学生收到的考试链接应使用实际测试通过的域名，新旧入口的数据相互可见。
 
 此轮已完成打包与语法检查；因 Pages 权限不足尚未部署，没有运行登录、答题或中国大陆网络功能测试。
+
+## 正式配色更新（2026-10-23）
+
+补充 Pages 编辑权限后，正式项目确认是 `lexiclass-classroom`，自定义域名 `classwords.bbroot.com` 已激活。已恢复本地忽略的项目配置，复用原 D1，保持 `ALLOW_DEMO=false`，为现有 API 启用 `nodejs_compat`。深绿与活力橙主题已部署到生产分支 main；原 Worker 和定时任务继续保留。Cloudflare 返回生产阶段 success，域名 active；当前云环境的目标域名网络规则尚未应用，因此没有直接请求正式网页，也没有运行真实账号或考试功能测试。
