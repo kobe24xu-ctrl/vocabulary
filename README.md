@@ -209,4 +209,4 @@ master 可在「听写任务」的考试卡片中点击「删除考试」，核�
 
 页面采用深绿导航、橙色主要操作按钮、暖白卡片与橙色学习插图。登录、教师与学生页面复用主题；应用图标和浏览器主题色同步调整，Service Worker 缓存升级至 v13。此次修改限于视觉资源，没有改变考试、评分或数据库逻辑。
 
-可运行 `node scripts/build-demo.mjs dist/lexiclass-green-orange-preview.html` 生成使用虚构数据的独立浏览器预览。已渲染教师概览和登录页预览、完成脚本语法检查，没有运行考试功能测试。正式 Pages 发布需要 Cloudflare Pages 编辑权限，并先核对实际 Pages 项目及现有 D1 绑定；本工作区截至本轮尝试读取 Pages 项目仍返回 HTTP 403 / 10000，正式站尚未由本轮命令发布。
+可运行 `node scripts/build-demo.mjs dist/lexiclass-green-orange-preview.html` 生成使用虚构数据的独立浏览器预览。已渲染教师概览和登录页预览、完成脚本语法检查，没有运行考试功能测试。正式 Pages 发布需要 Cloudflare Pages 编辑权限，并先核对实际 Pages 项目及现有 D1 绑定；2026-10-23 补充授权后，已读取并确认正式 Pages 项目 lexiclass-classroom、域名 classwords.bbroot.com、原 D1 绑定及关闭演示模式。网络草稿已添加正式域名，尚待应用以读取线上资源并核对当前部署版本；正式站尚未由本轮命令发布。
