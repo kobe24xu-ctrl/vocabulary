@@ -80,6 +80,15 @@ if (
 db.exec(
   "CREATE TABLE IF NOT EXISTS class_courses(class_id TEXT NOT NULL REFERENCES classes(id),subject TEXT NOT NULL,title TEXT NOT NULL,content TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT '',PRIMARY KEY(class_id,subject))",
 );
+// Idempotent label migration; retain all student and teaching record IDs.
+db.exec("BEGIN");
+try {
+  db.exec(readFileSync(join(ROOT, "cloudflare/migrations/0004_uow_program_name.sql"), "utf8"));
+  db.exec("COMMIT");
+} catch (error) {
+  db.exec("ROLLBACK");
+  throw error;
+}
 const hash = (v) => createHash("sha256").update(String(v)).digest("hex");
 const token = () => randomBytes(24).toString("hex");
 const id = () => randomUUID();

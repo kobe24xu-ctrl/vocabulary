@@ -13,7 +13,7 @@ import unicodedata
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
-PROGRAMS = {'UNSW 新南预科', 'NCUK 国际预科', 'UOW 伍伦贡预科', '通用示例'}
+PROGRAMS = {'UNSW 新南预科', 'NCUK 国际预科', 'UOW 沃隆港预科', '通用示例'}
 SUBJECTS = {'Mathematics', 'English', 'Economics', 'Accounting', 'Computer Science',
             'Academic English', 'Language Learning', 'Business', 'Physics', 'Chemistry'}
 

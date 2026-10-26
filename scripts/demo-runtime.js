@@ -304,6 +304,10 @@
       db = JSON.parse(localStorage.getItem(storageKey) || "null");
     } catch {}
     if (!db || db.version !== 1) await seed();
+    for (const row of [...db.users, ...db.classes, ...db.words, ...db.tasks]) {
+      if (row.program === "UOW 伍伦贡预科") row.program = "UOW 沃隆港预科";
+    }
+    persist();
   })();
 
   async function route(path, method, body) {

@@ -20,7 +20,7 @@ import unicodedata
 import uuid
 
 SUBJECTS = {'数学':'Mathematics','英语':'English','经济':'Economics','会计':'Accounting','计算机':'Computer Science','学术英语':'Academic English','语言学习':'Language Learning','商务':'Business','物理':'Physics','化学':'Chemistry'}
-SHEETS = {'新南总表':('UNSW 新南预科',None),'沃隆港总表':('UOW 伍伦贡预科',None),'NCUK1班总表':('NCUK 国际预科',1),'NCUK2班总表':('NCUK 国际预科',2),'NCUK3班总表':('NCUK 国际预科',3)}
+SHEETS = {'新南总表':('UNSW 新南预科',None),'沃隆港总表':('UOW 沃隆港预科',None),'NCUK1班总表':('NCUK 国际预科',1),'NCUK2班总表':('NCUK 国际预科',2),'NCUK3班总表':('NCUK 国际预科',3)}
 ROOT=Path(__file__).resolve().parent.parent
 
 
