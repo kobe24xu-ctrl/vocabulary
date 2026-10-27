@@ -1,3 +1,4 @@
+import { wordAvailableFor } from "./public/word-banks.js";
 import { validateCourses } from "./lib/courses.mjs";
 import {
   normalizeUsername,
@@ -83,7 +84,12 @@ db.exec(
 // Idempotent label migration; retain all student and teaching record IDs.
 db.exec("BEGIN");
 try {
-  db.exec(readFileSync(join(ROOT, "cloudflare/migrations/0004_uow_program_name.sql"), "utf8"));
+  db.exec(
+    readFileSync(
+      join(ROOT, "cloudflare/migrations/0004_uow_program_name.sql"),
+      "utf8",
+    ),
+  );
   db.exec("COMMIT");
 } catch (error) {
   db.exec("ROLLBACK");
@@ -317,11 +323,9 @@ function taskCreate(owner, b) {
     fail(400, "请设置有效的起止时间，以及 1–180 分钟的答题时长。");
   if (!["en-zh", "zh-en", "mixed", "choice"].includes(b.mode))
     fail(400, "请选择有效题型。");
-  const pool = wordsFor(owner).filter(
-    (w) =>
-      w.subject === b.subject &&
-      (w.program === "通用示例" || w.program === b.program),
-  );
+  const pool = wordsFor(owner)
+    .filter((w) => wordAvailableFor(w, b.program, b.subject))
+    .map((w) => ({ ...w, subject: b.subject }));
   if (!Array.isArray(b.wordIds) || !b.wordIds.length || b.wordIds.length > 100)
     fail(400, "每份任务请选择 1–100 个词汇。");
   const selected = [...new Set(b.wordIds)].map((wid) =>

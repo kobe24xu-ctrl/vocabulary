@@ -6,6 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(join(root, path), "utf8");
 let app = read("public/app.js")
   .replace(/^import .*speech\.js.*;\n/m, "")
+  .replace(/^import .*word-banks\.js.*;\n/m, "")
   .replaceAll('"lexiclass-student-entry"', '"lexiclass-offline-entry"')
   .replaceAll('"lexiclass-exam"', '"lexiclass-offline-exam"')
   .replaceAll("${location.origin}/#invite=", "${DEMO_FILE_BASE}#invite=")
@@ -31,6 +32,10 @@ app = app
   .replaceAll("复制考试链接", "复制本机演示链接")
   .replaceAll("用于以后在任何电脑登录", "仅用于本机演示，请勿使用真实密码");
 const shared =
+  read("public/word-banks.js")
+    .replaceAll("export const ", "const ")
+    .replaceAll("export function ", "function ") +
+  "\n" +
   read("lib/words.mjs").replaceAll("export const ", "const ") +
   "\n" +
   read("lib/domain.mjs")

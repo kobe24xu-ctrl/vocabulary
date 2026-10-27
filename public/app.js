@@ -1,3 +1,4 @@
+import { wordAvailableFor, sharedWordSubjects } from "./word-banks.js";
 import { speakLocalEnglish } from "./speech.js";
 
 const $ = (s) => document.querySelector(s);
@@ -320,6 +321,7 @@ function wordSubjects(program) {
       .filter((c) => c.program === program)
       .flatMap((c) => (c.courses || []).map((course) => course.subject)),
     ...state.words.filter((w) => w.program === program).map((w) => w.subject),
+    ...sharedWordSubjects(program),
   ]);
   return state.config.subjects.filter((subject) => available.has(subject));
 }
@@ -333,29 +335,19 @@ function wordsView() {
     state.filter.group = "all";
     state.wordLimit = 60;
   }
-  const groups = [
-    ...new Set(
-      state.words
-        .filter(
-          (w) =>
-            (state.filter.subject === "all" ||
-              w.subject === state.filter.subject) &&
-            (state.filter.program === "all" ||
-              w.program === state.filter.program),
-        )
-        .flatMap((w) => w.groups || []),
-    ),
-  ].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  const available = state.words.filter(
+    (w) =>
+      (w.program !== "通用示例" || subjects.includes(w.subject)) &&
+      wordAvailableFor(w, state.filter.program, state.filter.subject),
+  );
+  const groups = [...new Set(available.flatMap((w) => w.groups || []))].sort(
+    (a, b) => a.localeCompare(b, "en", { numeric: true }),
+  );
   const group = groups.includes(state.filter.group)
     ? state.filter.group
     : "all";
-  const words = state.words.filter(
+  const words = available.filter(
     (w) =>
-      subjects.includes(w.subject) &&
-      (state.filter.subject === "all" || w.subject === state.filter.subject) &&
-      (state.filter.program === "all" ||
-        w.program === state.filter.program ||
-        w.program === "通用示例") &&
       (group === "all" || (w.groups || []).includes(group)) &&
       `${w.term} ${w.translation}`
         .toLowerCase()
@@ -365,7 +357,7 @@ function wordsView() {
     .slice(0, state.wordLimit || 60)
     .map(
       (w) =>
-        `<article class="word-card">${badge(nameSubject(w.subject), "gray")} ${badge(w.program === "通用示例" ? "通用场景" : programShort(w.program))}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9;margin-bottom:14px">${esc(w.sentenceZh)}</p><footer><span>${esc(w.source)}</span><button class="btn btn-quiet" data-action="speak-word" data-id="${w.id}" title="朗读英文场景句">${icon("volume")}</button></footer></article>`,
+        `<article class="word-card">${badge(nameSubject(state.filter.program === "UOW 沃隆港预科" && state.filter.subject !== "all" ? state.filter.subject : w.subject), "gray")} ${badge(w.program === "通用示例" ? "通用场景" : state.filter.program === "UOW 沃隆港预科" && w.program === "UNSW 新南预科" ? "新南共用词库" : programShort(w.program))}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9;margin-bottom:14px">${esc(w.sentenceZh)}</p><footer><span>${esc(w.source)}</span><button class="btn btn-quiet" data-action="speak-word" data-id="${w.id}" title="朗读英文场景句">${icon("volume")}</button></footer></article>`,
     )
     .join(
       "",
@@ -716,11 +708,7 @@ function taskWords() {
     subject = form.elements.subject.value;
   const available =
     cls && subject
-      ? state.words.filter(
-          (w) =>
-            w.subject === subject &&
-            (w.program === "通用示例" || w.program === cls.program),
-        )
+      ? state.words.filter((w) => wordAvailableFor(w, cls.program, subject))
       : [];
   const groupSelect = form.elements.wordGroup;
   const scope = `${cls?.id || ""}:${subject}`;
@@ -745,7 +733,7 @@ function taskWords() {
     ? words
         .map(
           (w, index) =>
-            `<label class="check-item word-choice"><input type="checkbox" name="wordIds" value="${w.id}" data-change="task-summary" ${index < 100 ? "checked" : ""}><span><strong>${esc(w.term)}</strong><small>${esc(w.translation)} · ${w.program === "通用示例" ? "自编示例" : "教师词库"}</small></span></label>`,
+            `<label class="check-item word-choice"><input type="checkbox" name="wordIds" value="${w.id}" data-change="task-summary" ${index < 100 ? "checked" : ""}><span><strong>${esc(w.term)}</strong><small>${esc(w.translation)} · ${w.program === "通用示例" ? "自编示例" : w.program !== cls.program ? "新南共用词库" : "教师词库"}</small></span></label>`,
         )
         .join("")
     : `<div class="alert">${!cls ? "请先选择班级。" : !cls.courses?.length ? "请先到班级管理中配置该班科目。" : !subject ? "请选择该班的科目。" : "这个科目暂无词汇，请先添加词汇与场景句。"}</div>`;

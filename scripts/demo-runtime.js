@@ -164,11 +164,9 @@
       duration > 180
     )
       reject("请设置有效的时间和答题时长。");
-    const pool = db.words.filter(
-      (w) =>
-        w.subject === raw.subject &&
-        (w.program === "通用示例" || w.program === raw.program),
-    );
+    const pool = db.words
+      .filter((w) => wordAvailableFor(w, raw.program, raw.subject))
+      .map((w) => ({ ...w, subject: raw.subject }));
     const selected = [...new Set(raw.wordIds || [])].map((id) =>
       pool.find((w) => w.id === id),
     );
