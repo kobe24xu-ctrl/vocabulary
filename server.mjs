@@ -1,4 +1,4 @@
-import { wordAvailableFor } from "./public/word-banks.js";
+import { wordAvailableFor, reviewWordKey } from "./public/word-banks.js";
 import { validateCourses } from "./lib/courses.mjs";
 import {
   normalizeUsername,
@@ -468,7 +468,7 @@ function finalize(attempt, answers, timedOut = false) {
         `INSERT INTO mistakes(id,student_id,word_id,direction,question,error_count,streak,next_review,last_answer,resolved) VALUES(?,?,?,?,?,1,0,?,?,0) ON CONFLICT(student_id,word_id,direction) DO UPDATE SET error_count=error_count+1,streak=0,next_review=excluded.next_review,last_answer=excluded.last_answer,resolved=0,question=excluded.question`,
         id(),
         attempt.student_id,
-        q.wordId,
+        reviewWordKey(t.program, q.wordId, q.subject),
         q.direction,
         jsonString(q),
         now,

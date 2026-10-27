@@ -1,4 +1,4 @@
-import { wordAvailableFor } from "../public/word-banks.js";
+import { wordAvailableFor, reviewWordKey } from "../public/word-banks.js";
 import { validateCourses } from "../lib/courses.mjs";
 import {
   normalizeUsername,
@@ -528,7 +528,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
         return [
           id(),
           attempt.student_id,
-          q.wordId,
+          reviewWordKey(task.program, q.wordId, q.subject),
           q.direction,
           jsonString(q),
           now,

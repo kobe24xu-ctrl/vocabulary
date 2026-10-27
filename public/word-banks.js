@@ -56,3 +56,12 @@ export function sharedWordSubjects(program) {
     ),
   ];
 }
+
+// Shared source IDs stay unchanged in questions. Separate the review identity
+// only where two UOW courses reuse the same English source vocabulary.
+export function reviewWordKey(program, wordId, subject) {
+  return program === "UOW 沃隆港预科" &&
+    ["Academic English", "Language Learning"].includes(subject)
+    ? `uow-review:${subject}:${wordId}`
+    : wordId;
+}

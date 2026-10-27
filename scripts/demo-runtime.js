@@ -80,7 +80,8 @@
       let mistake = db.mistakes.find(
         (m) =>
           m.studentId === attempt.studentId &&
-          m.question.wordId === question.wordId &&
+          reviewWordKey(task.program, m.question.wordId, m.question.subject) ===
+            reviewWordKey(task.program, question.wordId, question.subject) &&
           m.question.direction === question.direction,
       );
       if (!mistake) {
