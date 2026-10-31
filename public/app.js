@@ -441,10 +441,10 @@ function timingSummary(attempt) {
   return `<p class="muted">开始：${attempt.startedAt ? date(attempt.startedAt, true) : "—"}<br>交卷：${attempt.finishedAt ? date(attempt.finishedAt, true) : "—"}<br>考试用时：<strong>${formatElapsed(attempt.elapsedSeconds)}</strong>${attempt.timedOut ? " · 到时自动提交" : ""}</p>`;
 }
 function resultBody(result) {
-  return result.results
+  return (result.semanticGrading?.fallback ? '<div class="alert">部分中文释义未完成 AI 判分，当前按预设答案计分，请联系 master 复核。</div>' : "") + result.results
     .map(
       (r, i) =>
-        `<div class="answer-row ${r.correct ? "" : "wrong"}">${icon(r.correct ? "check" : "close")}<div><strong>${i + 1}. ${esc(r.focus)}</strong><p>${esc(r.prompt)}</p><p>你的答案：${esc(r.submitted || "（未作答）")} ${!r.correct ? `<br>参考答案：<strong>${esc(r.answer)}</strong>` : ""}</p><small>${esc(modeName(r.direction))} · ${r.correct ? "回答正确" : "已收入错题本"}</small></div></div>`,
+        `<div class="answer-row ${r.correct ? "" : "wrong"}">${icon(r.correct ? "check" : "close")}<div><strong>${i + 1}. ${esc(r.focus)}</strong><p>${esc(r.prompt)}</p><p>你的答案：${esc(r.submitted || "（未作答）")} ${!r.correct ? `<br>参考答案：<strong>${esc(r.answer)}</strong>` : ""}</p><small>${esc(modeName(r.direction))} · ${r.correct ? "回答正确" : "已收入错题本"}${r.gradingMethod === "ai" ? " · AI 语义判分" : r.gradingMethod === "standard_fallback" ? " · 仅按预设答案判分，待老师复核" : ""}</small></div></div>`,
     )
     .join("");
 }
@@ -1619,7 +1619,7 @@ document.addEventListener("submit", async (e) => {
         r.resolved
           ? "这个词已标记为已掌握。"
           : `下次复习：${date(r.nextReview)}`,
-        `<div class="alert ${r.correct ? "success" : "error"}">参考答案：<strong>${esc(r.answer)}</strong><br>你的答案：${esc(data.answer)}<br>连续正确 ${r.streak} / 3 次</div>`,
+        `<div class="alert ${r.correct ? "success" : "error"}">参考答案：<strong>${esc(r.answer)}</strong><br>你的答案：${esc(data.answer)}<br>连续正确 ${r.streak} / 3 次${r.gradingMethod === "ai" ? " · AI 语义判分" : ""}</div>`,
         `<button class="btn btn-primary" data-action="close-modal">知道了</button>`,
       );
     }

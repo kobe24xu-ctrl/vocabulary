@@ -1,3 +1,4 @@
+import { markWithAI } from "../lib/semantic-grading.mjs";
 import { wordAvailableFor, reviewWordKey } from "../public/word-banks.js";
 import { validateCourses } from "../lib/courses.mjs";
 import {
@@ -507,7 +508,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
       timedOut = true;
       answers = json(attempt.answers);
     }
-    const result = mark(questions, answers),
+    const result = await markWithAI(questions, answers, env),
       lock = id();
     const statements = [
       statement(
@@ -1346,8 +1347,11 @@ function service(env, request, headers = new Headers(SECURITY)) {
       const b = await body(),
         q = json(m.question),
         answer = required(b.answer, "答案", 2000),
-        correct = isCorrect(answer, q.accepted),
+        grading = await markWithAI([q], { [q.id]: answer }, env),
+        correct = grading.results[0].correct,
         streak = correct ? m.streak + 1 : 0;
+      if (grading.semanticGrading?.fallback)
+        fail(503, "语义判分暂不可用，复习进度未改变，请稍后重试。");
       const nextReview =
         Date.now() +
         (correct ? [1, 3, 7][Math.min(streak - 1, 2)] * 86400000 : 600000);
@@ -1366,6 +1370,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
       return {
         correct,
         answer: q.answer,
+        gradingMethod: grading.results[0].gradingMethod || "standard",
         streak,
         nextReview,
         resolved: streak >= 3,

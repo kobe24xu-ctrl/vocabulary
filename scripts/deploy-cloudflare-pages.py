@@ -40,6 +40,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build-only', action='store_true')
     parser.add_argument('--project', default='lexiclass-classroom')
+    parser.add_argument('--enable-workers-ai', action='store_true',
+                        help='Attach AI to the existing production project; does not change the account plan.')
     args = parser.parse_args()
     if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,56}[a-z0-9]', args.project):
         raise RuntimeError('Use a valid Pages project name.')
@@ -94,6 +96,17 @@ def main():
         raise RuntimeError('Pages DB binding differs from the current classroom database.')
     if production.get('env_vars', {}).get('ALLOW_DEMO', {}).get('value') != 'false':
         raise RuntimeError('Disable Pages demo mode before deploying real classroom data.')
+    if args.enable_workers_ai and 'AI' not in production.get('ai_bindings', {}):
+        ai_bindings = dict(production.get('ai_bindings', {}))
+        ai_bindings['AI'] = {}
+        cf.api(base + '/' + name, 'PATCH', {
+            'deployment_configs': {'production': {'ai_bindings': ai_bindings}}
+        })
+        updated = cf.api(base + '/' + name)
+        if 'AI' not in updated['deployment_configs']['production'].get('ai_bindings', {}):
+            raise RuntimeError('Production AI binding was not saved; deployment stopped.')
+        if updated['deployment_configs']['production'].get('d1_databases', {}).get('DB', {}).get('id') != config['d1_databases'][0]['database_id']:
+            raise RuntimeError('Production DB binding changed unexpectedly; deployment stopped.')
     cf.wrangler('pages', 'deploy', str(SITE), '--project-name', name,
                 '--branch', branch, '--commit-dirty=true')
     print('Pages deployment completed: https://' + current['subdomain'], flush=True)
