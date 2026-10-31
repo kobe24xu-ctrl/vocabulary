@@ -1,5 +1,9 @@
 import { markWithAI } from "../lib/semantic-grading.mjs";
-import { wordAvailableFor, reviewWordKey } from "../public/word-banks.js";
+import {
+  wordAvailableFor,
+  reviewWordKey,
+  learningWords,
+} from "../public/word-banks.js";
 import { validateCourses } from "../lib/courses.mjs";
 import {
   normalizeUsername,
@@ -1029,6 +1033,20 @@ function service(env, request, headers = new Headers(SECURITY)) {
       if (!target) fail(404, "演示学生不存在。");
       await run("DELETE FROM sessions WHERE token_hash=?", session.token_hash);
       return { user: await newSession(target, session.demo_owner_id) };
+    }
+    if (path === "/api/learning" && method === "GET") {
+      student(u);
+      const cls = (await classViews(u.owner_id)).find(
+        (c) => c.id === u.class_id,
+      );
+      if (!cls) fail(404, "未找到你的班级，请联系 master。");
+      const subjects = [...new Set(cls.courses.map((c) => c.subject))];
+      return {
+        className: cls.name,
+        program: cls.program,
+        subjects,
+        words: learningWords(await wordsFor(u.owner_id), cls.program, subjects),
+      };
     }
     if (path === "/api/words" && method === "GET") {
       teacher(u);

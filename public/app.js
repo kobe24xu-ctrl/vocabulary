@@ -62,6 +62,8 @@ const state = {
   students: [],
   classes: [],
   words: [],
+  learning: null,
+  learningError: null,
   results: [],
   mistakes: [],
   filter: {
@@ -183,6 +185,7 @@ function navItems() {
       ]
     : [
         ["dashboard", "grid", "我的学习"],
+        ["learning", "book", "每周词汇"],
         [
           "tasks",
           "clipboard",
@@ -378,6 +381,60 @@ function resultsView() {
     done = rows.filter((r) => r.score !== null);
   return `${heading("成绩分析", "看见每次提交，也看见需要多一点帮助的学生。", `<button class="btn btn-light" data-action="export-results">${icon("download")}导出成绩 CSV</button>`)}<div class="stats-grid">${stat("应交练习", rows.length, "份", "clipboard", "按当前筛选范围统计")}${stat("已交练习", done.length, "份", "check", `提交率 <strong>${rows.length ? Math.round((done.length / rows.length) * 100) : 0}%</strong>`, "blue")}${stat("平均成绩", mean(done), "分", "chart", "每份听写按 100 分制计分", "gold")}${stat("达到 80 分", done.filter((r) => r.score >= 80).length, "份", "spark", "用于识别当前词汇掌握情况", "purple")}</div>${state.resultTaskId ? `<div class="alert">当前任务：${esc(state.tasks.find((t) => t.id === state.resultTaskId)?.title)} <button class="btn btn-quiet" data-action="clear-task-filter">查看全部任务 ×</button></div>` : ""}${filters({ classes: true, subject: true, search: true })}<div class="panel"><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>项目 / 班级</th><th>听写任务</th><th>成绩</th><th>考试用时</th><th>状态 / 提交时间</th><th>答题详情</th></tr></thead><tbody>${rows.map((r) => `<tr><td><div class="person"><span class="avatar">${esc(r.name.slice(-1))}</span>${esc(r.name)}</div></td><td>${esc(r.className)}<div class="table-secondary">${esc(programShort(r.program))} · ${esc(nameSubject(r.subject))}</div></td><td>${esc(r.taskTitle)}</td><td><span class="score ${r.score !== null && r.score < 60 ? "low" : ""}">${r.score ?? "—"}</span></td><td><strong>${r.state === "in_progress" ? "答题中" : formatElapsed(r.elapsedSeconds)}</strong></td><td>${badge({ submitted: r.timedOut ? "超时自动交卷" : "已提交", pending: "待完成", in_progress: "答题中", missing: "未提交" }[r.state], r.state === "missing" ? "red" : r.state === "submitted" ? "" : "blue")}<div class="table-secondary">${r.finishedAt ? date(r.finishedAt) : "—"}</div></td><td>${r.result ? `<button class="btn btn-light btn-sm" data-action="result-detail" data-task="${r.taskId}" data-student="${r.studentId}">查看详情</button>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("暂无成绩记录", "发布任务后，这里会展示每位学生的完成状态。") : ""}</div>`;
 }
+function learningView() {
+  const data = state.learning;
+  if (state.learningError)
+    return (
+      heading("每周词汇", "所有周次与单元长期开放。") +
+      empty(
+        "词汇加载失败",
+        state.learningError,
+        '<button class="btn btn-light" data-action="nav" data-view="learning">重新加载</button>',
+      )
+    );
+  if (!data)
+    return (
+      heading("每周词汇", "按你的班级和科目，随时学习所有周次与单元。") +
+      empty("正在加载词汇", "请稍候…")
+    );
+  const subjects = data.subjects;
+  if (
+    state.filter.subject !== "all" &&
+    !subjects.includes(state.filter.subject)
+  ) {
+    state.filter.subject = "all";
+    state.filter.group = "all";
+  }
+  const available = data.words.filter(
+    (w) => state.filter.subject === "all" || w.subject === state.filter.subject,
+  );
+  const groups = [...new Set(available.flatMap((w) => w.groups))].sort((a, b) =>
+    a.localeCompare(b, "en", { numeric: true }),
+  );
+  const group =
+    groups.includes(state.filter.group) || state.filter.group === "ungrouped"
+      ? state.filter.group
+      : "all";
+  const search = state.filter.search.toLowerCase();
+  const words = available.filter(
+    (w) =>
+      (group === "all" ||
+        (group === "ungrouped"
+          ? !w.groups.length
+          : w.groups.includes(group))) &&
+      `${w.term} ${w.translation}`.toLowerCase().includes(search),
+  );
+  const limit = state.wordLimit || 60;
+  return `${heading("每周词汇", `${data.className} · 全部周次与单元长期开放，无需等待老师发布考试。`)}<div class="alert">${icon("book")} 选择科目及周次 / 单元即可学习，支持预习与回顾。内容包含词汇、中文释义和双语场景例句；场景例句为教学材料，并非官方试题。</div>${filters({ program: false, subject: true, subjectOptions: subjects, search: true })}<div class="toolbar"><select data-filter="group" aria-label="按周次或单元学习">${option("all", "全部周次 / 单元", group)}${groups.map((g) => option(g, g, group)).join("")}${available.some((w) => !w.groups.length) ? option("ungrouped", "未分组词汇", group) : ""}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, limit)} 条</span></div><div class="cards-grid">${words
+    .slice(0, limit)
+    .map(
+      (w) =>
+        `<article class="word-card">${badge(nameSubject(w.subject), "gray")}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9">${esc(w.sentenceZh)}</p><footer><span>${esc(w.groups.join(" · ") || "未分组")}</span></footer></article>`,
+    )
+    .join(
+      "",
+    )}</div>${words.length > limit ? '<button class="btn btn-light" data-action="more-words">加载更多词汇</button>' : ""}${!words.length ? empty("暂无匹配词汇", subjects.length ? "可切换科目、周次或搜索条件；尚未录入的科目需由 master 补充词库。" : "班级尚未配置科目，请联系 master。") : ""}`;
+}
 function studyButton(t, small = true) {
   if (t.attempt && !t.attempt.submittedAt) return "";
   return `<button class="btn btn-light ${small ? "btn-sm" : ""}" data-action="study-task" data-id="${t.id}">${icon("book")}学习词汇</button>`;
@@ -406,7 +463,7 @@ function studentDashboard() {
     ),
     done = state.tasks.filter((t) => t.attempt?.submittedAt),
     due = state.mistakes.filter((m) => !m.resolved && m.nextReview <= now());
-  return `${heading("我的学习", "每天一点积累，让专业课里的每一句话都更清晰。", `<button class="btn btn-light" data-action="notifications">${icon("bell")}开启任务提醒</button>`)}<section class="student-welcome"><h2>${esc(state.user.name)}，今天也要有所收获。</h2><p>${esc(state.user.className)}<br>老师已为你安排好学习内容，准备好就开始吧。</p>${art()}</section><div class="stats-grid">${stat("待完成测试", pending.length, "份", "clipboard", "记得在截止时间前提交")}${stat("已完成测试", done.length, "份", "check", "每一次努力都有记录", "blue")}${stat("听写平均分", mean(done.map((t) => ({ score: t.attempt.score }))), "分", "chart", "持续练习，慢慢进步", "gold")}${stat("今天待复习", due.length, "个", "repeat", `共 ${state.mistakes.filter((m) => !m.resolved).length} 个未掌握错词`, "purple")}</div><div class="panel-header" style="padding:0 0 18px"><h2>接下来，完成这些练习</h2><button class="section-link" data-action="nav" data-view="tasks">全部测试 ${icon("arrow")}</button></div><div class="cards-grid">${pending.slice(0, 3).map(studentTaskCard).join("")}</div>${!pending.length ? empty("今天的待办已清空", "可以去错题本复习，或者回看之前的成绩。", `<button class="btn btn-primary" data-action="nav" data-view="review">${icon("repeat")}复习错题</button>`) : ""}`;
+  return `${heading("我的学习", "每天一点积累，让专业课里的每一句话都更清晰。", `<button class="btn btn-primary" data-action="nav" data-view="learning">${icon("book")}每周词汇 · 随时学习</button><button class="btn btn-light" data-action="notifications">${icon("bell")}开启任务提醒</button>`)}<section class="student-welcome"><h2>${esc(state.user.name)}，今天也要有所收获。</h2><p>${esc(state.user.className)}<br>老师已为你安排好学习内容，准备好就开始吧。</p>${art()}</section><div class="stats-grid">${stat("待完成测试", pending.length, "份", "clipboard", "记得在截止时间前提交")}${stat("已完成测试", done.length, "份", "check", "每一次努力都有记录", "blue")}${stat("听写平均分", mean(done.map((t) => ({ score: t.attempt.score }))), "分", "chart", "持续练习，慢慢进步", "gold")}${stat("今天待复习", due.length, "个", "repeat", `共 ${state.mistakes.filter((m) => !m.resolved).length} 个未掌握错词`, "purple")}</div><div class="panel-header" style="padding:0 0 18px"><h2>接下来，完成这些练习</h2><button class="section-link" data-action="nav" data-view="tasks">全部测试 ${icon("arrow")}</button></div><div class="cards-grid">${pending.slice(0, 3).map(studentTaskCard).join("")}</div>${!pending.length ? empty("今天的待办已清空", "可以去错题本复习，或者回看之前的成绩。", `<button class="btn btn-primary" data-action="nav" data-view="review">${icon("repeat")}复习错题</button>`) : ""}`;
 }
 function studentTasks(history = false) {
   const tasks = state.tasks.filter((t) =>
@@ -526,6 +583,8 @@ function classCourses(classId, editing = false) {
 function content() {
   if (state.attempt) return examView();
   if (state.examResult) return resultView();
+  if (state.user.role === "student" && state.view === "learning")
+    return learningView();
   if (state.user.role === "student" && state.view === "account")
     return accountView();
   if (state.user.role === "student" && state.view === "exam-entry")
@@ -580,7 +639,10 @@ async function load() {
     );
 }
 async function refresh() {
-  await load();
+  if (state.user?.role === "student" && state.view === "learning") {
+    state.learning = await api("/api/learning");
+    state.learningError = null;
+  } else await load();
   if (!modalOpen && !state.attempt && !state.examResult) render();
 }
 function modal(title, description, body, footer = "", wide = false) {
@@ -1057,8 +1119,20 @@ async function navigate(view) {
     search: "",
   };
   state.resultTaskId = null;
+  if (view === "learning") {
+    state.learning = null;
+    state.learningError = null;
+  }
   render();
   window.scrollTo(0, 0);
+  if (view === "learning") {
+    try {
+      state.learning = await api("/api/learning");
+    } catch (error) {
+      state.learningError = error.message || "请检查网络后重试。";
+    }
+    render();
+  }
 }
 
 document.addEventListener("click", async (e) => {
@@ -1066,7 +1140,7 @@ document.addEventListener("click", async (e) => {
   if (!b) return;
   const action = b.dataset.action;
   try {
-    if (action === "nav") return navigate(b.dataset.view);
+    if (action === "nav") return await navigate(b.dataset.view);
     if (action === "close-modal") return closeModal();
     if (action === "menu") return $(".sidebar")?.classList.toggle("open");
     if (action === "auth-tab") {
@@ -1099,6 +1173,7 @@ document.addEventListener("click", async (e) => {
       }
       await post("/api/logout");
       state.user = null;
+      state.learning = null;
       state.authTab = "student";
       state.attempt = null;
       state.examResult = null;

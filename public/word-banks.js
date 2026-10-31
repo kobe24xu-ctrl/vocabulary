@@ -57,6 +57,26 @@ export function sharedWordSubjects(program) {
   ];
 }
 
+// Student learning follows their class courses, including explicit shared banks.
+// Return only learning material, without teacher-only grading/import metadata.
+export function learningWords(words, program, subjects) {
+  return [...new Set(subjects)].flatMap((subject) =>
+    words
+      .filter((w) => wordAvailableFor(w, program, subject))
+      .map((w) => ({
+        id: w.id,
+        program,
+        subject,
+        term: w.term,
+        translation: w.translation,
+        sentence: w.sentence,
+        sentenceZh: w.sentenceZh,
+        groups: Array.isArray(w.groups) ? w.groups : [],
+        source: w.source || "",
+      })),
+  );
+}
+
 // Shared source IDs stay unchanged in questions. Separate the review identity
 // only where two UOW courses reuse the same English source vocabulary.
 export function reviewWordKey(program, wordId, subject) {

@@ -527,6 +527,18 @@
       student.passwordHash = null;
       return { invite };
     }
+    if (path === "/api/learning" && method === "GET") {
+      requireUser("student");
+      const cls = db.classes.find((c) => c.id === u.classId);
+      if (!cls) reject("未找到你的演示班级。", 404);
+      const subjects = [...new Set((cls.courses || []).map((c) => c.subject))];
+      return {
+        className: cls.name,
+        program: cls.program,
+        subjects,
+        words: learningWords(db.words, cls.program, subjects),
+      };
+    }
     if (path === "/api/words") {
       requireUser("teacher");
       if (method === "POST") {

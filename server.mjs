@@ -1,4 +1,8 @@
-import { wordAvailableFor, reviewWordKey } from "./public/word-banks.js";
+import {
+  wordAvailableFor,
+  reviewWordKey,
+  learningWords,
+} from "./public/word-banks.js";
 import { validateCourses } from "./lib/courses.mjs";
 import {
   normalizeUsername,
@@ -890,6 +894,18 @@ async function api(req, res, url) {
     if (!target) fail(404, "演示学生不存在。");
     run("DELETE FROM sessions WHERE token_hash=?", session.token_hash);
     return { user: newSession(req, res, target, session.demo_owner_id) };
+  }
+  if (path === "/api/learning" && method === "GET") {
+    if (u.role !== "student") fail(403, "请使用学生账号学习。");
+    const cls = classViews(u.owner_id).find((c) => c.id === u.class_id);
+    if (!cls) fail(404, "未找到你的班级，请联系 master。");
+    const subjects = [...new Set(cls.courses.map((c) => c.subject))];
+    return {
+      className: cls.name,
+      program: cls.program,
+      subjects,
+      words: learningWords(wordsFor(u.owner_id), cls.program, subjects),
+    };
   }
   if (path === "/api/words" && method === "GET") {
     if (u.role !== "teacher") fail(403, "词库仅供教师管理。");
