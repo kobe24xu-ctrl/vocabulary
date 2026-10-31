@@ -39,7 +39,7 @@ const shared =
   read("lib/words.mjs").replaceAll("export const ", "const ") +
   "\n" +
   read("lib/domain.mjs")
-    .replace(/^import .*\n/, "")
+    .replace(/^import .*\n/gm, "")
     .replaceAll("export const ", "const ")
     .replaceAll("export function ", "function ");
 const speech = read("public/speech.js")

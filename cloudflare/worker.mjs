@@ -96,6 +96,7 @@ function taskView(t) {
     audience: json(t.audience),
     classIds: json(t.class_ids),
     questionCount: qs.length,
+    questionType: qs.every((q) => q.choices) ? "choice" : "fill",
     mode: qs.every((q) => q.direction === qs[0].direction)
       ? qs[0].direction
       : "mixed",
@@ -401,6 +402,11 @@ function service(env, request, headers = new Headers(SECURITY)) {
       fail(400, "请设置有效的起止时间，以及 1–180 分钟的答题时长。");
     if (!["en-zh", "zh-en", "mixed", "choice"].includes(b.mode))
       fail(400, "请选择有效题型。");
+    if (
+      b.questionType !== undefined &&
+      !["choice", "fill"].includes(b.questionType)
+    )
+      fail(400, "请选择选择题或填空题。");
     const pool = context.words
       .filter((w) => wordAvailableFor(w, b.program, b.subject))
       .map((w) => ({ ...w, subject: b.subject }));
@@ -459,7 +465,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
     }
     let questions;
     try {
-      questions = buildQuestions(words, b.mode, pool);
+      questions = buildQuestions(words, b.mode, pool, b.questionType);
     } catch (e) {
       fail(400, e.message);
     }

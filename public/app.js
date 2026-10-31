@@ -96,6 +96,8 @@ const modeName = (m) =>
     mixed: "双向翻译",
     choice: "场景选择题",
   })[m] || m;
+const taskModeName = (t) =>
+  `${t.questionType === "choice" || t.mode === "choice" ? "选择题" : "填空题"} · ${t.mode === "choice" ? "英译中" : modeName(t.mode)}`;
 const date = (v, full = false) =>
   v
     ? new Date(v).toLocaleString("zh-CN", {
@@ -291,7 +293,7 @@ function tasksView() {
   return `${heading("听写任务", "在真实语境中练习，按班级和学生精准布置。", `<button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}${filters({ classes: true, subject: true, search: true })}<div class="cards-grid">${filteredTasks()
     .map((t) => {
       const [label, color] = statusOf(t);
-      return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(t.program)} · ${esc(nameSubject(t.subject))}<br>${t.classIds.map(clsName).map(esc).join("、")} · ${t.audience === "all" ? "所选班级全体" : `${t.audience.length} 位指定学生`}</p><div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span><span>${esc(modeName(t.mode))}</span></div><p>${icon("clock")} ${date(t.opensAt)} — ${date(t.closesAt)}</p><div class="progress-track" style="width:100%;margin:15px 0"><div class="progress-fill" style="width:${t.studentCount ? (t.submitted / t.studentCount) * 100 : 0}%"></div></div><div class="assignment-bottom"><span>${t.submitted} / ${t.studentCount} 人已提交</span><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">考试链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">查看成绩 ${icon("arrow")}</button><button class="btn btn-danger btn-sm" data-action="delete-task" data-id="${t.id}">删除考试</button></div></div></article>`;
+      return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(t.program)} · ${esc(nameSubject(t.subject))}<br>${t.classIds.map(clsName).map(esc).join("、")} · ${t.audience === "all" ? "所选班级全体" : `${t.audience.length} 位指定学生`}</p><div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span><span>${esc(taskModeName(t))}</span></div><p>${icon("clock")} ${date(t.opensAt)} — ${date(t.closesAt)}</p><div class="progress-track" style="width:100%;margin:15px 0"><div class="progress-fill" style="width:${t.studentCount ? (t.submitted / t.studentCount) * 100 : 0}%"></div></div><div class="assignment-bottom"><span>${t.submitted} / ${t.studentCount} 人已提交</span><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">考试链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">查看成绩 ${icon("arrow")}</button><button class="btn btn-danger btn-sm" data-action="delete-task" data-id="${t.id}">删除考试</button></div></div></article>`;
     })
     .join(
       "",
@@ -379,7 +381,7 @@ function resultsView() {
 function studentTaskCard(t) {
   const [label, color] = statusOf(t),
     done = !!t.attempt?.submittedAt;
-  return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(nameSubject(t.subject))} · ${esc(modeName(t.mode))}</p>${done ? `<div class="student-score">${t.attempt.score}<small> / 100 分</small></div>` : `<div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span></div>`}<p>${icon("clock")} ${t.opensAt > now() ? "开始" : "截止"}：${date(t.opensAt > now() ? t.opensAt : t.closesAt)}</p><div class="assignment-bottom" style="margin-top:18px"><span>${done ? `用时 ${formatElapsed(t.attempt.elapsedSeconds)}` : "提交后自动整理错题"}</span><button class="btn ${done ? "btn-light" : "btn-primary"} btn-sm" data-action="${done ? "student-result" : "start-task"}" data-id="${t.id}" ${!done && (t.opensAt > now() || t.closesAt <= now()) ? "disabled" : ""}>${done ? "查看结果" : t.attempt ? "继续答题" : t.opensAt > now() ? "等待开始" : t.closesAt <= now() ? "已截止" : "开始测试"} ${icon("arrow")}</button></div></article>`;
+  return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(nameSubject(t.subject))} · ${esc(taskModeName(t))}</p>${done ? `<div class="student-score">${t.attempt.score}<small> / 100 分</small></div>` : `<div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span></div>`}<p>${icon("clock")} ${t.opensAt > now() ? "开始" : "截止"}：${date(t.opensAt > now() ? t.opensAt : t.closesAt)}</p><div class="assignment-bottom" style="margin-top:18px"><span>${done ? `用时 ${formatElapsed(t.attempt.elapsedSeconds)}` : "提交后自动整理错题"}</span><button class="btn ${done ? "btn-light" : "btn-primary"} btn-sm" data-action="${done ? "student-result" : "start-task"}" data-id="${t.id}" ${!done && (t.opensAt > now() || t.closesAt <= now()) ? "disabled" : ""}>${done ? "查看结果" : t.attempt ? "继续答题" : t.opensAt > now() ? "等待开始" : t.closesAt <= now() ? "已截止" : "开始测试"} ${icon("arrow")}</button></div></article>`;
 }
 function studentDashboard() {
   const pending = state.tasks.filter(
@@ -428,7 +430,7 @@ const answerAttrs =
   'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"';
 function examView() {
   const a = state.attempt;
-  return `<div class="exam-layout"><div class="exam-top"><div><span class="eyebrow">CONTEXTUAL PRACTICE</span><h2>${esc(a.task.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p></div><div class="exam-clock mono" id="exam-clock">--:--</div></div><div class="alert">请翻译场景句中高亮的词汇或短语。答题框已关闭浏览器自动纠错、拼写检查和自动补全；请同时关闭输入法的联想纠错。到时会按服务端已保存答案自动交卷。</div><div class="exam-progress"><div id="exam-progress-fill" style="width:${(Object.values(a.attempt.answers).filter((v) => v.trim()).length / a.questions.length) * 100}%"></div></div><form id="exam-form">${a.questions.map((q, i) => `<article class="question-card"><div class="question-label"><span>QUESTION ${String(i + 1).padStart(2, "0")} / ${String(a.questions.length).padStart(2, "0")}</span>${badge(modeName(q.direction), "gray")}</div><h3>${q.direction === "zh-en" ? "请写出高亮词汇对应的英文" : q.direction === "choice" ? "请选择高亮词汇在本句中的含义" : "请写出高亮词汇在本句中的中文含义"}</h3><div class="question-prompt">${highlight(q.prompt, q.focus)}</div>${q.choices ? q.choices.map((c, j) => `<label class="choice-label"><input type="radio" name="${q.id}" value="${esc(c)}" ${a.attempt.answers[q.id] === c ? "checked" : ""}><span>${String.fromCharCode(65 + j)}.</span>${esc(c)}</label>`).join("") : `<label class="form-field"><span class="visually-hidden">第 ${i + 1} 题答案</span><input name="${q.id}" type="text" lang="${q.direction === "zh-en" ? "en" : "zh-CN"}" ${answerAttrs} maxlength="2000" placeholder="${q.direction === "zh-en" ? "在此输入英文词汇或短语…" : "在此输入中文释义…"}" value="${esc(a.attempt.answers[q.id] || "")}"></label>`}</article>`).join("")}<div class="exam-sticky"><div><div class="save-indicator" id="save-indicator">${icon("shield")} 已保存到服务器</div><small class="muted" id="answered-count">已作答 ${Object.values(a.attempt.answers).filter((v) => v.trim()).length} / ${a.questions.length} 题</small></div><button type="button" class="btn btn-primary" data-action="confirm-submit" id="submit-button">提交本次听写 ${icon("arrow")}</button></div></form></div>`;
+  return `<div class="exam-layout"><div class="exam-top"><div><span class="eyebrow">CONTEXTUAL PRACTICE</span><h2>${esc(a.task.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p></div><div class="exam-clock mono" id="exam-clock">--:--</div></div><div class="alert">请翻译场景句中高亮的词汇或短语。答题框已关闭浏览器自动纠错、拼写检查和自动补全；请同时关闭输入法的联想纠错。到时会按服务端已保存答案自动交卷。</div><div class="exam-progress"><div id="exam-progress-fill" style="width:${(Object.values(a.attempt.answers).filter((v) => v.trim()).length / a.questions.length) * 100}%"></div></div><form id="exam-form">${a.questions.map((q, i) => `<article class="question-card"><div class="question-label"><span>QUESTION ${String(i + 1).padStart(2, "0")} / ${String(a.questions.length).padStart(2, "0")}</span>${badge(`${q.choices ? "选择题" : "填空题"} · ${modeName(q.direction)}`, "gray")}</div><h3>${q.choices ? (q.direction === "zh-en" ? "请选择高亮词义对应的英文词汇" : "请选择高亮词汇在本句中的含义") : q.direction === "zh-en" ? "请写出高亮词汇对应的英文" : "请写出高亮词汇在本句中的中文含义"}</h3><div class="question-prompt">${highlight(q.prompt, q.focus)}</div>${q.choices ? q.choices.map((c, j) => `<label class="choice-label"><input type="radio" name="${q.id}" value="${esc(c)}" ${a.attempt.answers[q.id] === c ? "checked" : ""}><span>${String.fromCharCode(65 + j)}.</span>${esc(c)}</label>`).join("") : `<label class="form-field"><span class="visually-hidden">第 ${i + 1} 题答案</span><input name="${q.id}" type="text" lang="${q.direction === "zh-en" ? "en" : "zh-CN"}" ${answerAttrs} maxlength="2000" placeholder="${q.direction === "zh-en" ? "在此输入英文词汇或短语…" : "在此输入中文释义…"}" value="${esc(a.attempt.answers[q.id] || "")}"></label>`}</article>`).join("")}<div class="exam-sticky"><div><div class="save-indicator" id="save-indicator">${icon("shield")} 已保存到服务器</div><small class="muted" id="answered-count">已作答 ${Object.values(a.attempt.answers).filter((v) => v.trim()).length} / ${a.questions.length} 题</small></div><button type="button" class="btn btn-primary" data-action="confirm-submit" id="submit-button">提交本次听写 ${icon("arrow")}</button></div></form></div>`;
 }
 function formatElapsed(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "—";
@@ -441,12 +443,17 @@ function timingSummary(attempt) {
   return `<p class="muted">开始：${attempt.startedAt ? date(attempt.startedAt, true) : "—"}<br>交卷：${attempt.finishedAt ? date(attempt.finishedAt, true) : "—"}<br>考试用时：<strong>${formatElapsed(attempt.elapsedSeconds)}</strong>${attempt.timedOut ? " · 到时自动提交" : ""}</p>`;
 }
 function resultBody(result) {
-  return (result.semanticGrading?.fallback ? '<div class="alert">部分中文释义未完成 AI 判分，当前按预设答案计分，请联系 master 复核。</div>' : "") + result.results
-    .map(
-      (r, i) =>
-        `<div class="answer-row ${r.correct ? "" : "wrong"}">${icon(r.correct ? "check" : "close")}<div><strong>${i + 1}. ${esc(r.focus)}</strong><p>${esc(r.prompt)}</p><p>你的答案：${esc(r.submitted || "（未作答）")} ${!r.correct ? `<br>参考答案：<strong>${esc(r.answer)}</strong>` : ""}</p><small>${esc(modeName(r.direction))} · ${r.correct ? "回答正确" : "已收入错题本"}${r.gradingMethod === "ai" ? " · AI 语义判分" : r.gradingMethod === "standard_fallback" ? " · 仅按预设答案判分，待老师复核" : ""}</small></div></div>`,
-    )
-    .join("");
+  return (
+    (result.semanticGrading?.fallback
+      ? '<div class="alert">部分中文释义未完成 AI 判分，当前按预设答案计分，请联系 master 复核。</div>'
+      : "") +
+    result.results
+      .map(
+        (r, i) =>
+          `<div class="answer-row ${r.correct ? "" : "wrong"}">${icon(r.correct ? "check" : "close")}<div><strong>${i + 1}. ${esc(r.focus)}</strong><p>${esc(r.prompt)}</p><p>你的答案：${esc(r.submitted || "（未作答）")} ${!r.correct ? `<br>参考答案：<strong>${esc(r.answer)}</strong>` : ""}</p><small>${r.questionType === "choice" ? "选择题 · " : r.questionType === "fill" ? "填空题 · " : ""}${esc(modeName(r.direction))} · ${r.correct ? "回答正确" : "已收入错题本"}${r.gradingMethod === "ai" ? " · AI 语义判分" : r.gradingMethod === "standard_fallback" ? " · 仅按预设答案判分，待老师复核" : ""}</small></div></div>`,
+      )
+      .join("")
+  );
 }
 function resultView() {
   const { attempt: a, task } = state.examResult,
@@ -643,7 +650,7 @@ function examEntryView() {
   const t = state.tasks.find((t) => t.id === state.requestedExamId);
   if (!t)
     return `${heading("考试入口", "使用自己的学生账号参加老师安排的考试。")}${empty("未找到分配给你的考试", "请核对当前账号是否属于老师指定的班级，或联系老师确认链接。", `<button class="btn btn-light" data-action="nav" data-view="dashboard">返回我的学习</button>`)}`;
-  return `<div class="exam-layout">${heading("考试入口", "无需安装，准备好后即可在网页中开始。")}<div class="exam-intro"><span class="eyebrow">YOUR CLASSROOM, CONNECTED</span><h2>${esc(t.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p><div class="detail-grid"><div><strong>${t.questionCount}</strong><small>道场景题</small></div><div><strong>${t.duration}</strong><small>分钟限时</small></div><div><strong>${esc(nameSubject(t.subject))}</strong><small>${esc(modeName(t.mode))}</small></div></div><p class="muted">开放时间：${date(t.opensAt, true)}<br>截止时间：${date(t.closesAt, true)}</p><div class="alert" style="margin-top:20px">开始后计时不可暂停，刷新可继续；到时按已保存答案自动交卷。成绩、历史记录和错题保存在你自己的账号中。</div>${t.attempt?.submittedAt ? `<button class="btn btn-primary" data-action="student-result" data-id="${t.id}">已完成 · 查看 ${t.attempt.score} 分的答题结果 ${icon("arrow")}</button>` : `<button class="btn btn-primary" data-action="start-task" data-id="${t.id}" ${t.opensAt > now() || t.closesAt <= now() ? "disabled" : ""}>${t.opensAt > now() ? "等待考试开放" : t.closesAt <= now() ? "考试已截止" : t.attempt ? "继续考试" : "我已准备好，开始考试"} ${icon("arrow")}</button>`}<button class="btn btn-quiet" data-action="nav" data-view="dashboard">返回我的学习</button></div></div>`;
+  return `<div class="exam-layout">${heading("考试入口", "无需安装，准备好后即可在网页中开始。")}<div class="exam-intro"><span class="eyebrow">YOUR CLASSROOM, CONNECTED</span><h2>${esc(t.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p><div class="detail-grid"><div><strong>${t.questionCount}</strong><small>道场景题</small></div><div><strong>${t.duration}</strong><small>分钟限时</small></div><div><strong>${esc(nameSubject(t.subject))}</strong><small>${esc(taskModeName(t))}</small></div></div><p class="muted">开放时间：${date(t.opensAt, true)}<br>截止时间：${date(t.closesAt, true)}</p><div class="alert" style="margin-top:20px">开始后计时不可暂停，刷新可继续；到时按已保存答案自动交卷。成绩、历史记录和错题保存在你自己的账号中。</div>${t.attempt?.submittedAt ? `<button class="btn btn-primary" data-action="student-result" data-id="${t.id}">已完成 · 查看 ${t.attempt.score} 分的答题结果 ${icon("arrow")}</button>` : `<button class="btn btn-primary" data-action="start-task" data-id="${t.id}" ${t.opensAt > now() || t.closesAt <= now() ? "disabled" : ""}>${t.opensAt > now() ? "等待考试开放" : t.closesAt <= now() ? "考试已截止" : t.attempt ? "继续考试" : "我已准备好，开始考试"} ${icon("arrow")}</button>`}<button class="btn btn-quiet" data-action="nav" data-view="dashboard">返回我的学习</button></div></div>`;
 }
 function createTask() {
   if (!state.classes.length) {
@@ -661,11 +668,10 @@ function createTask() {
   modal(
     "发布场景听写",
     "先选班级，再选该班科目；默认全班参加，可取消勾选个别人。",
-    `<form id="task-form"><div class="form-grid"><div class="full">${field("任务名称", "title", "text", "例如：经济学 · 市场与价格机制")}</div><label class="form-field full"><span>选择班级</span><select name="classId" data-change="task-class" required>${option("", "请选择班级", initialClass)}${state.classes.map((c) => option(c.id, `${c.name} · ${programShort(c.program)}`, initialClass)).join("")}</select></label><label class="form-field"><span>该班科目</span><select name="subject" data-change="task-words" required disabled><option value="">请先选择班级</option></select></label><label class="form-field"><span>答题形式</span><select name="mode">${[
+    `<form id="task-form"><div class="form-grid"><div class="full">${field("任务名称", "title", "text", "例如：经济学 · 市场与价格机制")}</div><label class="form-field full"><span>选择班级</span><select name="classId" data-change="task-class" required>${option("", "请选择班级", initialClass)}${state.classes.map((c) => option(c.id, `${c.name} · ${programShort(c.program)}`, initialClass)).join("")}</select></label><label class="form-field"><span>该班科目</span><select name="subject" data-change="task-words" required disabled><option value="">请先选择班级</option></select></label><label class="form-field"><span>题型</span><select name="questionType" required><option value="fill">填空题 · 手动输入答案</option><option value="choice">选择题 · 五选一（A–E）</option></select></label><label class="form-field"><span>翻译方向</span><select name="mode">${[
       ["mixed", "双向翻译 · 英中交替"],
-      ["en-zh", "英译中 · 场景听写"],
-      ["zh-en", "中译英 · 场景听写"],
-      ["choice", "选择题 · 场景辨义"],
+      ["en-zh", "英译中 · 理解中文含义"],
+      ["zh-en", "中译英 · 掌握英文词汇"],
     ]
       .map(([v, l]) => option(v, l, "mixed"))
       .join(
@@ -1011,7 +1017,7 @@ function reviewWord(mid) {
   modal(
     "再练一次，记得更牢一点",
     `${nameSubject(q.subject)} · ${modeName(q.direction)}`,
-    `<form id="review-form"><div class="question-prompt">${highlight(q.prompt, q.focus)}</div><label class="form-field"><span>${q.direction === "zh-en" ? "请输入英文词汇或短语" : "请输入中文释义"}</span><input name="answer" type="text" ${answerAttrs} maxlength="2000" required placeholder="试着独立作答…"></label></form>`,
+    `<form id="review-form"><div class="question-prompt">${highlight(q.prompt, q.focus)}</div>${q.choices ? q.choices.map((c, j) => `<label class="choice-label"><input type="radio" name="answer" value="${esc(c)}" required><span>${String.fromCharCode(65 + j)}.</span>${esc(c)}</label>`).join("") : `<label class="form-field"><span>${q.direction === "zh-en" ? "请输入英文词汇或短语" : "请输入中文释义"}</span><input name="answer" type="text" ${answerAttrs} maxlength="2000" required placeholder="试着独立作答…"></label>`}</form>`,
     `<button class="btn btn-light" data-action="close-modal">稍后复习</button><button class="btn btn-primary" type="submit" form="review-form">检查答案</button>`,
   );
   reviewing = m;
@@ -1551,6 +1557,7 @@ document.addEventListener("submit", async (e) => {
         program: cls.program,
         subject: data.subject,
         mode: data.mode,
+        questionType: data.questionType,
         opensAt: new Date(data.opensAt).toISOString(),
         closesAt: new Date(data.closesAt).toISOString(),
         duration: Number(data.duration),

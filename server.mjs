@@ -323,6 +323,11 @@ function taskCreate(owner, b) {
     fail(400, "请设置有效的起止时间，以及 1–180 分钟的答题时长。");
   if (!["en-zh", "zh-en", "mixed", "choice"].includes(b.mode))
     fail(400, "请选择有效题型。");
+  if (
+    b.questionType !== undefined &&
+    !["choice", "fill"].includes(b.questionType)
+  )
+    fail(400, "请选择选择题或填空题。");
   const pool = wordsFor(owner)
     .filter((w) => wordAvailableFor(w, b.program, b.subject))
     .map((w) => ({ ...w, subject: b.subject }));
@@ -388,7 +393,7 @@ function taskCreate(owner, b) {
     )
       fail(400, "所选学生不属于指定班级。");
   }
-  const questions = buildQuestions(selected, b.mode, pool);
+  const questions = buildQuestions(selected, b.mode, pool, b.questionType);
   const tid = id();
   run(
     "INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -425,6 +430,7 @@ function taskView(t) {
     audience: json(t.audience),
     classIds: json(t.class_ids),
     questionCount: qs.length,
+    questionType: qs.every((q) => q.choices) ? "choice" : "fill",
     mode: qs.every((q) => q.direction === qs[0].direction)
       ? qs[0].direction
       : "mixed",

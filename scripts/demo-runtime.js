@@ -181,13 +181,15 @@
       program: raw.program,
       subject: raw.subject,
       mode: raw.mode,
+      questionType:
+        raw.questionType || (raw.mode === "choice" ? "choice" : "fill"),
       classIds: [...raw.classIds],
       audience: raw.audience,
       opensAt,
       closesAt,
       duration,
       createdAt: Date.now(),
-      questions: buildQuestions(selected, raw.mode, pool),
+      questions: buildQuestions(selected, raw.mode, pool, raw.questionType),
     };
     db.tasks.unshift(task);
     return taskView(task);
