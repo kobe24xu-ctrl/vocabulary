@@ -602,6 +602,16 @@
         serverTime: Date.now(),
       };
     }
+    const study = path.match(/^\/api\/tasks\/([^/]+)\/study$/);
+    if (study && method === "GET") {
+      requireUser("student");
+      const task = db.tasks.find((t) => t.id === study[1] && allowed(t, u));
+      if (!task) reject("未找到分配给你的演示考试。", 404);
+      const a = attemptFor(task.id, u.id);
+      if (a && !a.submittedAt)
+        reject("本场考试已开始，请提交后再查看学习词汇。", 409);
+      return { task: taskView(task), words: studyWords(task.questions) };
+    }
     const start = path.match(/^\/api\/tasks\/([^/]+)\/start$/);
     if (start) {
       requireUser("student");

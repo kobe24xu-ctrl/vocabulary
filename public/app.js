@@ -378,10 +378,27 @@ function resultsView() {
     done = rows.filter((r) => r.score !== null);
   return `${heading("成绩分析", "看见每次提交，也看见需要多一点帮助的学生。", `<button class="btn btn-light" data-action="export-results">${icon("download")}导出成绩 CSV</button>`)}<div class="stats-grid">${stat("应交练习", rows.length, "份", "clipboard", "按当前筛选范围统计")}${stat("已交练习", done.length, "份", "check", `提交率 <strong>${rows.length ? Math.round((done.length / rows.length) * 100) : 0}%</strong>`, "blue")}${stat("平均成绩", mean(done), "分", "chart", "每份听写按 100 分制计分", "gold")}${stat("达到 80 分", done.filter((r) => r.score >= 80).length, "份", "spark", "用于识别当前词汇掌握情况", "purple")}</div>${state.resultTaskId ? `<div class="alert">当前任务：${esc(state.tasks.find((t) => t.id === state.resultTaskId)?.title)} <button class="btn btn-quiet" data-action="clear-task-filter">查看全部任务 ×</button></div>` : ""}${filters({ classes: true, subject: true, search: true })}<div class="panel"><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>项目 / 班级</th><th>听写任务</th><th>成绩</th><th>考试用时</th><th>状态 / 提交时间</th><th>答题详情</th></tr></thead><tbody>${rows.map((r) => `<tr><td><div class="person"><span class="avatar">${esc(r.name.slice(-1))}</span>${esc(r.name)}</div></td><td>${esc(r.className)}<div class="table-secondary">${esc(programShort(r.program))} · ${esc(nameSubject(r.subject))}</div></td><td>${esc(r.taskTitle)}</td><td><span class="score ${r.score !== null && r.score < 60 ? "low" : ""}">${r.score ?? "—"}</span></td><td><strong>${r.state === "in_progress" ? "答题中" : formatElapsed(r.elapsedSeconds)}</strong></td><td>${badge({ submitted: r.timedOut ? "超时自动交卷" : "已提交", pending: "待完成", in_progress: "答题中", missing: "未提交" }[r.state], r.state === "missing" ? "red" : r.state === "submitted" ? "" : "blue")}<div class="table-secondary">${r.finishedAt ? date(r.finishedAt) : "—"}</div></td><td>${r.result ? `<button class="btn btn-light btn-sm" data-action="result-detail" data-task="${r.taskId}" data-student="${r.studentId}">查看详情</button>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("暂无成绩记录", "发布任务后，这里会展示每位学生的完成状态。") : ""}</div>`;
 }
+function studyButton(t, small = true) {
+  if (t.attempt && !t.attempt.submittedAt) return "";
+  return `<button class="btn btn-light ${small ? "btn-sm" : ""}" data-action="study-task" data-id="${t.id}">${icon("book")}学习词汇</button>`;
+}
+async function studyTask(taskId) {
+  if (state.attempt) throw new Error("请先提交当前测试，再查看学习词汇。");
+  const { task, words } = await api(
+    `/api/tasks/${encodeURIComponent(taskId)}/study`,
+  );
+  modal(
+    "考前学习 · 本次考试词汇",
+    `${task.title} · ${nameSubject(task.subject)} · ${words.length} 个词汇`,
+    `<div class="alert">考试时间：${date(task.opensAt, true)} — ${date(task.closesAt, true)}<br>这是本次考试要考的词汇。提前学习不计时；点击「开始测试」才开始计时。</div><div class="study-word-grid">${words.map((w, i) => `<article class="word-card"><span class="eyebrow">WORD ${String(i + 1).padStart(2, "0")}</span><h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9">${esc(w.sentenceZh)}</p></article>`).join("")}</div>`,
+    `<button class="btn btn-primary" data-action="close-modal">完成学习</button>`,
+    true,
+  );
+}
 function studentTaskCard(t) {
   const [label, color] = statusOf(t),
     done = !!t.attempt?.submittedAt;
-  return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(nameSubject(t.subject))} · ${esc(taskModeName(t))}</p>${done ? `<div class="student-score">${t.attempt.score}<small> / 100 分</small></div>` : `<div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span></div>`}<p>${icon("clock")} ${t.opensAt > now() ? "开始" : "截止"}：${date(t.opensAt > now() ? t.opensAt : t.closesAt)}</p><div class="assignment-bottom" style="margin-top:18px"><span>${done ? `用时 ${formatElapsed(t.attempt.elapsedSeconds)}` : "提交后自动整理错题"}</span><button class="btn ${done ? "btn-light" : "btn-primary"} btn-sm" data-action="${done ? "student-result" : "start-task"}" data-id="${t.id}" ${!done && (t.opensAt > now() || t.closesAt <= now()) ? "disabled" : ""}>${done ? "查看结果" : t.attempt ? "继续答题" : t.opensAt > now() ? "等待开始" : t.closesAt <= now() ? "已截止" : "开始测试"} ${icon("arrow")}</button></div></article>`;
+  return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(nameSubject(t.subject))} · ${esc(taskModeName(t))}</p>${done ? `<div class="student-score">${t.attempt.score}<small> / 100 分</small></div>` : `<div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span></div>`}<p>${icon("clock")} ${t.opensAt > now() ? "开始" : "截止"}：${date(t.opensAt > now() ? t.opensAt : t.closesAt)}</p><div class="assignment-bottom" style="margin-top:18px"><span>${done ? `用时 ${formatElapsed(t.attempt.elapsedSeconds)}` : "提交后自动整理错题"}</span><div class="task-actions">${studyButton(t)}<button class="btn ${done ? "btn-light" : "btn-primary"} btn-sm" data-action="${done ? "student-result" : "start-task"}" data-id="${t.id}" ${!done && (t.opensAt > now() || t.closesAt <= now()) ? "disabled" : ""}>${done ? "查看结果" : t.attempt ? "继续答题" : t.opensAt > now() ? "等待开始" : t.closesAt <= now() ? "已截止" : "开始测试"} ${icon("arrow")}</button></div></div></article>`;
 }
 function studentDashboard() {
   const pending = state.tasks.filter(
@@ -650,7 +667,7 @@ function examEntryView() {
   const t = state.tasks.find((t) => t.id === state.requestedExamId);
   if (!t)
     return `${heading("考试入口", "使用自己的学生账号参加老师安排的考试。")}${empty("未找到分配给你的考试", "请核对当前账号是否属于老师指定的班级，或联系老师确认链接。", `<button class="btn btn-light" data-action="nav" data-view="dashboard">返回我的学习</button>`)}`;
-  return `<div class="exam-layout">${heading("考试入口", "无需安装，准备好后即可在网页中开始。")}<div class="exam-intro"><span class="eyebrow">YOUR CLASSROOM, CONNECTED</span><h2>${esc(t.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p><div class="detail-grid"><div><strong>${t.questionCount}</strong><small>道场景题</small></div><div><strong>${t.duration}</strong><small>分钟限时</small></div><div><strong>${esc(nameSubject(t.subject))}</strong><small>${esc(taskModeName(t))}</small></div></div><p class="muted">开放时间：${date(t.opensAt, true)}<br>截止时间：${date(t.closesAt, true)}</p><div class="alert" style="margin-top:20px">开始后计时不可暂停，刷新可继续；到时按已保存答案自动交卷。成绩、历史记录和错题保存在你自己的账号中。</div>${t.attempt?.submittedAt ? `<button class="btn btn-primary" data-action="student-result" data-id="${t.id}">已完成 · 查看 ${t.attempt.score} 分的答题结果 ${icon("arrow")}</button>` : `<button class="btn btn-primary" data-action="start-task" data-id="${t.id}" ${t.opensAt > now() || t.closesAt <= now() ? "disabled" : ""}>${t.opensAt > now() ? "等待考试开放" : t.closesAt <= now() ? "考试已截止" : t.attempt ? "继续考试" : "我已准备好，开始考试"} ${icon("arrow")}</button>`}<button class="btn btn-quiet" data-action="nav" data-view="dashboard">返回我的学习</button></div></div>`;
+  return `<div class="exam-layout">${heading("考试入口", "无需安装，准备好后即可在网页中开始。")}<div class="exam-intro"><span class="eyebrow">YOUR CLASSROOM, CONNECTED</span><h2>${esc(t.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p><div class="detail-grid"><div><strong>${t.questionCount}</strong><small>道场景题</small></div><div><strong>${t.duration}</strong><small>分钟限时</small></div><div><strong>${esc(nameSubject(t.subject))}</strong><small>${esc(taskModeName(t))}</small></div></div><p class="muted">开放时间：${date(t.opensAt, true)}<br>截止时间：${date(t.closesAt, true)}</p><div class="alert" style="margin-top:20px">开始后计时不可暂停，刷新可继续；到时按已保存答案自动交卷。成绩、历史记录和错题保存在你自己的账号中。</div>${studyButton(t, false)}${t.attempt?.submittedAt ? `<button class="btn btn-primary" data-action="student-result" data-id="${t.id}">已完成 · 查看 ${t.attempt.score} 分的答题结果 ${icon("arrow")}</button>` : `<button class="btn btn-primary" data-action="start-task" data-id="${t.id}" ${t.opensAt > now() || t.closesAt <= now() ? "disabled" : ""}>${t.opensAt > now() ? "等待考试开放" : t.closesAt <= now() ? "考试已截止" : t.attempt ? "继续考试" : "我已准备好，开始考试"} ${icon("arrow")}</button>`}<button class="btn btn-quiet" data-action="nav" data-view="dashboard">返回我的学习</button></div></div>`;
 }
 function createTask() {
   if (!state.classes.length) {
@@ -1333,6 +1350,15 @@ document.addEventListener("click", async (e) => {
           ]),
         ]),
       );
+      return;
+    }
+    if (action === "study-task") {
+      b.disabled = true;
+      try {
+        await studyTask(b.dataset.id);
+      } finally {
+        b.disabled = false;
+      }
       return;
     }
     if (action === "start-task") {

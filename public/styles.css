@@ -2058,3 +2058,13 @@ tbody tr:last-child td {
 .stat-card,
 .assignment-card,
 .word-card { box-shadow: 0 3px 14px #153F3005; }
+
+.study-word-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
+}
+.assignment-bottom:has([data-action="study-task"]) {
+  flex-wrap: wrap;
+  gap: 12px;
+}

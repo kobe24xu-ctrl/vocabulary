@@ -22,6 +22,7 @@ import {
   buildQuestions,
   attemptTiming,
   publicQuestion,
+  studyWords,
   mark,
   isCorrect,
 } from "../lib/domain.mjs";
@@ -1190,6 +1191,20 @@ function service(env, request, headers = new Headers(SECURITY)) {
         }
       }
       return { tasks, serverTime: Date.now() };
+    }
+    const study = path.match(/^\/api\/tasks\/([^/]+)\/study$/);
+    if (study && method === "GET") {
+      student(u);
+      const t = await one("SELECT * FROM tasks WHERE id=?", study[1]);
+      if (!t || !canTake(t, u)) fail(404, "未找到分配给你的任务。");
+      const a = await one(
+        "SELECT submitted_at FROM attempts WHERE task_id=? AND student_id=?",
+        t.id,
+        u.id,
+      );
+      if (a && !a.submitted_at)
+        fail(409, "本场考试已开始，请提交后再查看学习词汇。");
+      return { task: taskView(t), words: studyWords(json(t.questions)) };
     }
     const start = path.match(/^\/api\/tasks\/([^/]+)\/start$/);
     if (start && method === "POST") {
