@@ -1,5 +1,4 @@
 import { wordAvailableFor, sharedWordSubjects } from "./word-banks.js";
-import { speakLocalEnglish } from "./speech.js";
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -36,7 +35,6 @@ const paths = {
   spark: "M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z",
   economy: "M4 18V8 M10 18V4 M16 18v-8 M22 18v-5 M2 21h21",
   math: "M4 5h16 M6 10l4 4-4 4 M14 14h6",
-  volume: "M11 4L5 9H2v6h3l6 5z M16 8a6 6 0 0 1 0 8 M19 4a11 11 0 0 1 0 16",
   repeat:
     "M20 7H8a5 5 0 0 0-5 5 M20 7l-4-4 M20 7l-4 4 M4 17h12a5 5 0 0 0 5-5 M4 17l4 4 M4 17l4-4",
   shield: "M12 2l9 4v6c0 5-9 10-9 10S3 17 3 12V6z M8 12l3 3 5-6",
@@ -357,7 +355,7 @@ function wordsView() {
     .slice(0, state.wordLimit || 60)
     .map(
       (w) =>
-        `<article class="word-card">${badge(nameSubject(state.filter.program === "UOW 沃隆港预科" && state.filter.subject !== "all" ? state.filter.subject : w.subject), "gray")} ${badge(w.program === "通用示例" ? "通用场景" : state.filter.program === "UOW 沃隆港预科" && w.program === "UNSW 新南预科" ? "新南共用词库" : programShort(w.program))}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9;margin-bottom:14px">${esc(w.sentenceZh)}</p><footer><span>${esc(w.source)}</span><button class="btn btn-quiet" data-action="speak-word" data-id="${w.id}" title="朗读英文场景句">${icon("volume")}</button></footer></article>`,
+        `<article class="word-card">${badge(nameSubject(state.filter.program === "UOW 沃隆港预科" && state.filter.subject !== "all" ? state.filter.subject : w.subject), "gray")} ${badge(w.program === "通用示例" ? "通用场景" : state.filter.program === "UOW 沃隆港预科" && w.program === "UNSW 新南预科" ? "新南共用词库" : programShort(w.program))}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9;margin-bottom:14px">${esc(w.sentenceZh)}</p><footer><span>${esc(w.source)}</span></footer></article>`,
     )
     .join(
       "",
@@ -430,7 +428,7 @@ const answerAttrs =
   'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"';
 function examView() {
   const a = state.attempt;
-  return `<div class="exam-layout"><div class="exam-top"><div><span class="eyebrow">CONTEXTUAL PRACTICE</span><h2>${esc(a.task.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p></div><div class="exam-clock mono" id="exam-clock">--:--</div></div><div class="alert">请翻译场景句中高亮的词汇或短语。答题框已关闭浏览器自动纠错、拼写检查和自动补全；请同时关闭输入法的联想纠错。到时会按服务端已保存答案自动交卷。</div><div class="exam-progress"><div id="exam-progress-fill" style="width:${(Object.values(a.attempt.answers).filter((v) => v.trim()).length / a.questions.length) * 100}%"></div></div><form id="exam-form">${a.questions.map((q, i) => `<article class="question-card"><div class="question-label"><span>QUESTION ${String(i + 1).padStart(2, "0")} / ${String(a.questions.length).padStart(2, "0")}</span>${badge(modeName(q.direction), "gray")}</div><h3>${q.direction === "zh-en" ? "请写出高亮词汇对应的英文" : q.direction === "choice" ? "请选择高亮词汇在本句中的含义" : "请写出高亮词汇在本句中的中文含义"}</h3><div class="question-prompt">${highlight(q.prompt, q.focus)}</div>${q.direction !== "zh-en" ? `<button class="btn btn-quiet" type="button" data-action="speak-question" data-id="${q.id}">${icon("volume")}朗读场景句</button>` : ""}${q.choices ? q.choices.map((c, j) => `<label class="choice-label"><input type="radio" name="${q.id}" value="${esc(c)}" ${a.attempt.answers[q.id] === c ? "checked" : ""}><span>${String.fromCharCode(65 + j)}.</span>${esc(c)}</label>`).join("") : `<label class="form-field"><span class="visually-hidden">第 ${i + 1} 题答案</span><input name="${q.id}" type="text" lang="${q.direction === "zh-en" ? "en" : "zh-CN"}" ${answerAttrs} maxlength="2000" placeholder="${q.direction === "zh-en" ? "在此输入英文词汇或短语…" : "在此输入中文释义…"}" value="${esc(a.attempt.answers[q.id] || "")}"></label>`}</article>`).join("")}<div class="exam-sticky"><div><div class="save-indicator" id="save-indicator">${icon("shield")} 已保存到服务器</div><small class="muted" id="answered-count">已作答 ${Object.values(a.attempt.answers).filter((v) => v.trim()).length} / ${a.questions.length} 题</small></div><button type="button" class="btn btn-primary" data-action="confirm-submit" id="submit-button">提交本次听写 ${icon("arrow")}</button></div></form></div>`;
+  return `<div class="exam-layout"><div class="exam-top"><div><span class="eyebrow">CONTEXTUAL PRACTICE</span><h2>${esc(a.task.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p></div><div class="exam-clock mono" id="exam-clock">--:--</div></div><div class="alert">请翻译场景句中高亮的词汇或短语。答题框已关闭浏览器自动纠错、拼写检查和自动补全；请同时关闭输入法的联想纠错。到时会按服务端已保存答案自动交卷。</div><div class="exam-progress"><div id="exam-progress-fill" style="width:${(Object.values(a.attempt.answers).filter((v) => v.trim()).length / a.questions.length) * 100}%"></div></div><form id="exam-form">${a.questions.map((q, i) => `<article class="question-card"><div class="question-label"><span>QUESTION ${String(i + 1).padStart(2, "0")} / ${String(a.questions.length).padStart(2, "0")}</span>${badge(modeName(q.direction), "gray")}</div><h3>${q.direction === "zh-en" ? "请写出高亮词汇对应的英文" : q.direction === "choice" ? "请选择高亮词汇在本句中的含义" : "请写出高亮词汇在本句中的中文含义"}</h3><div class="question-prompt">${highlight(q.prompt, q.focus)}</div>${q.choices ? q.choices.map((c, j) => `<label class="choice-label"><input type="radio" name="${q.id}" value="${esc(c)}" ${a.attempt.answers[q.id] === c ? "checked" : ""}><span>${String.fromCharCode(65 + j)}.</span>${esc(c)}</label>`).join("") : `<label class="form-field"><span class="visually-hidden">第 ${i + 1} 题答案</span><input name="${q.id}" type="text" lang="${q.direction === "zh-en" ? "en" : "zh-CN"}" ${answerAttrs} maxlength="2000" placeholder="${q.direction === "zh-en" ? "在此输入英文词汇或短语…" : "在此输入中文释义…"}" value="${esc(a.attempt.answers[q.id] || "")}"></label>`}</article>`).join("")}<div class="exam-sticky"><div><div class="save-indicator" id="save-indicator">${icon("shield")} 已保存到服务器</div><small class="muted" id="answered-count">已作答 ${Object.values(a.attempt.answers).filter((v) => v.trim()).length} / ${a.questions.length} 题</small></div><button type="button" class="btn btn-primary" data-action="confirm-submit" id="submit-button">提交本次听写 ${icon("arrow")}</button></div></form></div>`;
 }
 function formatElapsed(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "—";
@@ -902,15 +900,6 @@ function parseCSV(text) {
     );
   });
 }
-async function speak(text) {
-  try {
-    await speakLocalEnglish(text, {
-      onError: () => toast("本地朗读不可用，请检查系统离线英文语音包。", true),
-    });
-  } catch (error) {
-    toast(error.message, true);
-  }
-}
 async function startTask(tid) {
   const data = await post(`/api/tasks/${tid}/start`);
   if (data.attempt.submittedAt) {
@@ -1340,12 +1329,6 @@ document.addEventListener("click", async (e) => {
       );
       return;
     }
-    if (action === "speak-word")
-      return speak(state.words.find((w) => w.id === b.dataset.id).sentence);
-    if (action === "speak-question")
-      return speak(
-        state.attempt.questions.find((q) => q.id === b.dataset.id).prompt,
-      );
     if (action === "start-task") {
       b.disabled = true;
       try {
