@@ -639,8 +639,8 @@ test("answer matching normalizes casing and punctuation, without fuzzy guessing"
   );
   assert.equal(q.length, 4);
   for (const question of q) {
-    assert.equal(question.choices.length, 4);
-    assert.equal(new Set(question.choices).size, 4);
+    assert.equal(question.choices.length, 5);
+    assert.equal(new Set(question.choices).size, 5);
     assert.ok(question.choices.includes(question.answer));
   }
 });

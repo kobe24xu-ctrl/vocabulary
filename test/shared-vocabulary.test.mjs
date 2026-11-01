@@ -263,6 +263,68 @@ for (const backend of (process.env.SHARED_BACKENDS || "node,worker").split(
         const imported = (
           await teacher.ok("/api/words", "POST", { words: fixtures })
         ).words;
+        await t.test(
+          "weekly vocabulary is available without exams and follows the student's class",
+          async () => {
+            assert.equal((await student.ok("/api/tasks")).tasks.length, 0);
+            assert.equal(
+              (await new Client(runtime.base).call("/api/learning")).status,
+              401,
+            );
+            assert.equal((await teacher.call("/api/learning")).status, 403);
+            const data = await student.ok(
+              "/api/learning?program=NCUK&classId=other",
+            );
+            assert.equal(data.className, cls.name);
+            assert.equal(data.program, program);
+            assert.deepEqual([...data.subjects].sort(), [...subjects].sort());
+            for (const subject of subjects) {
+              const expected = imported.filter((w) =>
+                wordAvailableFor(w, program, subject),
+              );
+              const actual = data.words.filter(
+                (w) =>
+                  w.subject === subject && expected.some((e) => e.id === w.id),
+              );
+              assert.equal(actual.length, 4);
+              assert.deepEqual(
+                [...new Set(actual.flatMap((w) => w.groups))].sort(),
+                ["Unit 1", "Unit 2"],
+              );
+              for (const w of actual) {
+                const original = expected.find((e) => e.id === w.id);
+                assert.equal(w.program, program);
+                assert.equal(w.term, original.term);
+                assert.equal(w.sentence, original.sentence);
+                assert.equal(w.sentenceZh, original.sentenceZh);
+                for (const privateKey of [
+                  "accepted",
+                  "aliases",
+                  "enAliases",
+                  "owner_id",
+                  "choices",
+                ])
+                  assert.equal(privateKey in w, false);
+              }
+            }
+            assert.equal(
+              data.words.some((w) => w.subject === "Accounting"),
+              false,
+            );
+            assert.equal((await student.ok("/api/tasks")).tasks.length, 0);
+            assert.equal(
+              (await student.ok("/api/mistakes")).mistakes.length,
+              0,
+            );
+            assert.equal(
+              (await teacher.ok("/api/students")).students.find(
+                (s) => s.id === roster[0].id,
+              ).attempts,
+              0,
+            );
+            assert.deepEqual(await student.ok("/api/learning"), data);
+          },
+        );
         const makeTask = (subject, wordIds) => ({
           title: `隔离-${subject}`,
           program,
@@ -466,6 +528,48 @@ for (const backend of (process.env.SHARED_BACKENDS || "node,worker").split(
                     1,
                   );
                 }
+                await page
+                  .getByRole("button", { name: "取消", exact: true })
+                  .click();
+                await page.evaluate(async () => {
+                  const r = await fetch("/api/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      role: "student",
+                      username: "shared-fixture-student",
+                      password: "IsolatedStudentPassword123!",
+                    }),
+                  });
+                  if (!r.ok) throw new Error("Isolated student login failed");
+                });
+                await page.reload();
+                await page.locator('.nav [data-view="learning"]').click();
+                await page
+                  .getByRole("heading", { name: "每周词汇", exact: true })
+                  .waitFor();
+                await page
+                  .locator('[data-filter="subject"]')
+                  .selectOption("Academic English");
+                await page
+                  .locator('[data-filter="group"]')
+                  .selectOption("Unit 1");
+                assert.equal(await page.locator(".word-card").count(), 2);
+                assert.equal(
+                  await page.locator('[data-filter="program"]').count(),
+                  0,
+                );
+                assert.equal(
+                  await page.locator('[data-action="add-word"]').count(),
+                  0,
+                );
+                await page
+                  .locator('[data-filter="subject"]')
+                  .selectOption("Language Learning");
+                await page
+                  .locator('[data-filter="group"]')
+                  .selectOption("Unit 2");
+                assert.equal(await page.locator(".word-card").count(), 2);
                 assert.deepEqual(errors, []);
                 assert.deepEqual(external, []);
               } finally {

@@ -116,10 +116,42 @@ try {
   await studentContext.close();
   await page.getByRole("button", { name: "已妥善保存" }).click();
   await page.locator(".nav [data-view=tasks]").click();
+  // This class has an explicit course list, as in the master-managed site.
+  assert.equal(
+    await page.evaluate(async () => {
+      const { classes } = await (await fetch("/api/classes")).json();
+      const cls = classes.find((c) => c.name === "UNSW 商科 A 班");
+      return (
+        await fetch(`/api/classes/${cls.id}/courses`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            courses: [{ subject: "Economics", title: "经济学", content: "" }],
+          }),
+        })
+      ).status;
+    }),
+    200,
+  );
+  await page.reload();
+  await page.getByRole("heading", { name: "教学概览", exact: true }).waitFor();
   await page.getByRole("button", { name: "发布听写", exact: true }).click();
   await page.locator("#task-form [name=title]").fill("浏览器验证 · 定向发布");
   await page.locator("#task-form [name=repeatDays]").fill("2");
-  await page.locator("#task-form [name=audienceMode]").selectOption("selected");
+  await page
+    .locator("#task-form [name=classId]")
+    .selectOption({ label: "UNSW 商科 A 班 · UNSW" });
+  await page.locator("#task-form [name=subject]").selectOption("Economics");
+  assert.equal(
+    await page
+      .locator("#task-students input")
+      .evaluateAll(
+        (inputs) => inputs.length > 0 && inputs.every((n) => n.checked),
+      ),
+    true,
+  );
+  for (const input of await page.locator("#task-students input").all())
+    await input.uncheck();
   await page
     .locator("#task-students label")
     .filter({ hasText: "浏览器学生甲" })
