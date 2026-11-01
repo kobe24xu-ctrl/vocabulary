@@ -47,7 +47,19 @@ const fixtures = [
   enAliases: [],
   source: "隔离验证词条，不用于正式教学",
 }));
-const subjects = SHARED_WORD_BANKS.map((r) => r.subject);
+fixtures.push(
+  ...fixtures
+    .filter((w) => w.subject === "English")
+    .map((w) => ({
+      ...w,
+      program,
+      subject: "Academic English",
+      source: "隔离 UOW 独立学术写作词库",
+    })),
+);
+const subjects = [
+  ...new Set([...SHARED_WORD_BANKS.map((r) => r.subject), "Academic English"]),
+];
 
 test("shared review keys distinguish UOW English courses and preserve other word identities", () => {
   const a = reviewWordKey(program, "source-word", "Academic English"),
@@ -492,10 +504,11 @@ for (const backend of (process.env.SHARED_BACKENDS || "node,worker").split(
                         .textContent(),
                       pool[i].sentenceZh,
                     );
-                    assert.ok(
+                    assert.equal(
                       (await cards.nth(i).textContent()).includes(
                         "新南共用词库",
                       ),
+                      pool[i].program === sourceProgram,
                     );
                   }
                 }
