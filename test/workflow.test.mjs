@@ -7,7 +7,11 @@ import { join } from "node:path";
 import { once } from "node:events";
 import { setTimeout as pause } from "node:timers/promises";
 import { DatabaseSync } from "node:sqlite";
-import { buildQuestions, isCorrect } from "../lib/domain.mjs";
+import {
+  buildQuestions,
+  isCorrect,
+  isQuestionCorrect,
+} from "../lib/domain.mjs";
 import { SAMPLE_WORDS, PROGRAMS } from "../lib/words.mjs";
 
 const dataDir = mkdtempSync(join(tmpdir(), "lexiclass-test-"));
@@ -633,6 +637,17 @@ test("answer matching normalizes casing and punctuation, without fuzzy guessing"
   assert.equal(isCorrect(" Opportunity-cost ", ["opportunity cost"]), true);
   assert.equal(isCorrect("inflaton", ["inflation"]), false);
   assert.equal(isCorrect("", [""]), false);
+  const notation = {
+    direction: "zh-en",
+    answerKind: "math-notation",
+    accepted: ["P(A')"],
+  };
+  assert.equal(isQuestionCorrect("P(A)", notation), false);
+  assert.equal(isQuestionCorrect("P ( A′ )", notation), true);
+  assert.equal(
+    isQuestionCorrect("P(A|B)", { ...notation, accepted: ["P(A ∩ B)"] }),
+    false,
+  );
   const q = buildQuestions(
     SAMPLE_WORDS.filter((w) => w.subject === "Mathematics"),
     "choice",

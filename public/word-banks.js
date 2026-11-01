@@ -3,12 +3,6 @@
 export const SHARED_WORD_BANKS = [
   {
     program: "UOW 沃隆港预科",
-    subject: "Mathematics",
-    sourceProgram: "UNSW 新南预科",
-    sourceSubject: "Mathematics",
-  },
-  {
-    program: "UOW 沃隆港预科",
     subject: "Computer Science",
     sourceProgram: "UNSW 新南预科",
     sourceSubject: "Computer Science",
@@ -28,12 +22,15 @@ export const SHARED_WORD_BANKS = [
 ];
 export function wordAvailableFor(word, program, subject = "all") {
   if (program === "all") return subject === "all" || word.subject === subject;
-  // UOW academic writing uses its own imported twelve-week bank.
+  // UOW mathematics and academic writing use their own imported banks.
   // Keep language learning on the existing shared UNSW English bank.
   if (program === "UOW 沃隆港预科") {
-    if (subject === "Academic English")
+    if (["Academic English", "Mathematics"].includes(subject))
       return word.program === program && word.subject === subject;
-    if (word.program === "通用示例" && word.subject === "Academic English")
+    if (
+      word.program === "通用示例" &&
+      ["Academic English", "Mathematics"].includes(word.subject)
+    )
       return false;
   }
   if (

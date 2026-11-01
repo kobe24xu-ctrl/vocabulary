@@ -49,16 +49,20 @@ const fixtures = [
 }));
 fixtures.push(
   ...fixtures
-    .filter((w) => w.subject === "English")
+    .filter((w) => ["English", "Mathematics"].includes(w.subject))
     .map((w) => ({
       ...w,
       program,
-      subject: "Academic English",
-      source: "隔离 UOW 独立学术写作词库",
+      subject: w.subject === "English" ? "Academic English" : "Mathematics",
+      source: "隔离 UOW 独立数学及学术写作词库",
     })),
 );
 const subjects = [
-  ...new Set([...SHARED_WORD_BANKS.map((r) => r.subject), "Academic English"]),
+  ...new Set([
+    ...SHARED_WORD_BANKS.map((r) => r.subject),
+    "Academic English",
+    "Mathematics",
+  ]),
 ];
 
 test("shared review keys distinguish UOW English courses and preserve other word identities", () => {

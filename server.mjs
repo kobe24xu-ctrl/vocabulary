@@ -45,7 +45,7 @@ import {
   publicQuestion,
   studyWords,
   mark,
-  isCorrect,
+  isQuestionCorrect,
 } from "./lib/domain.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -1226,7 +1226,7 @@ async function api(req, res, url) {
     const b = await body(req),
       q = json(m.question),
       answer = required(b.answer, "答案", 2000),
-      correct = isCorrect(answer, q.accepted),
+      correct = isQuestionCorrect(answer, q),
       streak = correct ? m.streak + 1 : 0,
       days = correct ? [1, 3, 7][Math.min(streak - 1, 2)] : 0;
     run(

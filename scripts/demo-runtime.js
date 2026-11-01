@@ -718,7 +718,7 @@
       if (!m) reject("未找到错题。", 404);
       if (m.nextReview > Date.now())
         reject("本次已复习，请等待下次复习时间。", 409);
-      const correct = isCorrect(body.answer, m.question.accepted);
+      const correct = isQuestionCorrect(body.answer, m.question);
       m.streak = correct ? m.streak + 1 : 0;
       m.resolved = m.streak >= 3;
       m.nextReview =
