@@ -30,6 +30,23 @@ Pages：`python scripts/deploy-cloudflare-pages.py --enable-workers-ai`。
 设置运行时变量 `SEMANTIC_GRADING=false` 可以停止语义调用。
 Node 本地版本与独立演示不绑定 Cloudflare AI，继续执行预设答案匹配。
 
+## 可选 OpenAI API 接入（当前未启用）
+
+已准备 OpenAI Responses API 适配层。当前仍使用 Workers AI，未配置或试调用付费 API。
+模型 ID 必须是该 OpenAI API 账户实际可用的 ID；没有将聊天中的 Luna 名称当作已验证 ID。
+决定切换后，在 **Pages 正式环境和原 Worker** 同时配置：
+
+- `GRADING_PROVIDER=openai`
+- `OPENAI_GRADING_MODEL`：账户实际可用的模型 ID。
+- `OPENAI_API_KEY`：使用 Cloudflare Secret 保存，不能提交 Git 或填入前端代码。
+
+两端须使用相同配置，保证手动交卷和定时交卷一致。缺少 Key 或模型时不调用 API。
+OpenAI 模式支持未匹配预设答案的中英文填空语义判断；英文要求拼写正确。
+数学符号和选择题仍按标准答案判断，不发给任何 AI。先按预设答案匹配可以减少调用。
+请求仅包含题干、学科、参考答案、方向和本题作答，不发送学生姓名、账号或班级，
+并设置 `store=false`。30 秒超时会中断 OpenAI 请求，按原有规则保留提交并显示回退提示。
+OpenAI API 独立计费；当前用户正在比较免费额度，继续保留 Workers AI。
+
 Cloudflare 当前提供每日 10,000 Neurons 免费额度，额度是账户共享，无法保证对应固定题量。
 Free 超额请求会失败；如果未来更换为 Paid，超额可能收费，须重新检查费用策略。
 参考：https://developers.cloudflare.com/workers-ai/platform/pricing/

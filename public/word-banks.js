@@ -22,6 +22,15 @@ export const SHARED_WORD_BANKS = [
 ];
 export function wordAvailableFor(word, program, subject = "all") {
   if (program === "all") return subject === "all" || word.subject === subject;
+  if (program === "NCUK 国际预科") {
+    if (["Business", "Economics"].includes(subject))
+      return word.program === program && word.subject === subject;
+    if (
+      word.program === "通用示例" &&
+      ["Business", "Economics"].includes(word.subject)
+    )
+      return false;
+  }
   // UOW mathematics and academic writing use their own imported banks.
   // Keep language learning on the existing shared UNSW English bank.
   if (program === "UOW 沃隆港预科") {

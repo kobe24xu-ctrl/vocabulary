@@ -563,7 +563,7 @@ for (const backend of (process.env.SHARED_BACKENDS || "node,worker").split(
                 await page.reload();
                 await page.locator('.nav [data-view="learning"]').click();
                 await page
-                  .getByRole("heading", { name: "每周词汇", exact: true })
+                  .getByRole("heading", { name: "词汇学习", exact: true })
                   .waitFor();
                 await page
                   .locator('[data-filter="subject"]')
