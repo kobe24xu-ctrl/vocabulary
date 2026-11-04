@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Deploy a new LexiClass trial using scoped environment credentials; stdlib only."""
 import json
+import argparse
 import os
 from pathlib import Path
 import re
@@ -49,6 +50,12 @@ def wrangler(*args):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--create-new', action='store_true',
+                        help='Explicitly provision a new installation; never use for classroom updates.')
+    args = parser.parse_args()
+    if not DEPLOY.exists() and not args.create_new:
+        raise RuntimeError('Existing deployment configuration is missing. Restore the original D1 binding before updating. Refusing to create a new classroom database or new accounts.')
     account_path = '/accounts/' + ACCOUNT
     verified = api('/user/tokens/verify')
     if verified.get('status') != 'active':

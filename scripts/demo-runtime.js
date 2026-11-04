@@ -515,6 +515,20 @@
           }),
       };
     }
+    const removeStudent = path.match(/^\/api\/students\/([^/]+)$/);
+    if (removeStudent && method === "DELETE") {
+      requireUser("teacher");
+      const sid = removeStudent[1];
+      if (!db.users.some((s) => s.id === sid && s.role === "student"))
+        reject("未找到学生。", 404);
+      db.users = db.users.filter((s) => s.id !== sid);
+      db.attempts = db.attempts.filter((a) => a.studentId !== sid);
+      db.mistakes = db.mistakes.filter((m) => m.studentId !== sid);
+      for (const task of db.tasks)
+        if (Array.isArray(task.audience))
+          task.audience = task.audience.filter((id) => id !== sid);
+      return { ok: true };
+    }
     const inviteRoute = path.match(/^\/api\/students\/([^/]+)\/invite$/);
     if (inviteRoute) {
       requireUser("teacher");
@@ -536,7 +550,7 @@
         className: cls.name,
         program: cls.program,
         subjects,
-        words: learningWords(db.words, cls.program, subjects),
+        words: learningWords(db.words, cls.program, subjects, cls),
       };
     }
     if (path === "/api/words") {

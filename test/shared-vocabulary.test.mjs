@@ -694,6 +694,44 @@ for (const backend of (process.env.SHARED_BACKENDS || "node,worker").split(
             );
           },
         );
+        await t.test(
+          "master deletes only the selected student and revokes their session",
+          async () => {
+            const existingStudent = roster[0].id;
+            const victim = (
+              await teacher.ok("/api/students", "POST", {
+                name: "隔离待删除学生",
+                classId: cls.id,
+              })
+            ).students[0];
+            const session = new Client(runtime.base);
+            await session.ok("/api/login", "POST", {
+              name: victim.name,
+              invite: victim.invite,
+            });
+            assert.equal(
+              (await student.call(`/api/students/${victim.id}`, "DELETE"))
+                .status,
+              403,
+            );
+            await teacher.ok(`/api/students/${victim.id}`, "DELETE");
+            assert.equal((await session.call("/api/me")).status, 401);
+            const remaining = (await teacher.ok("/api/students")).students;
+            assert.equal(
+              remaining.some((s) => s.id === victim.id),
+              false,
+            );
+            assert.equal(
+              remaining.some((s) => s.id === existingStudent),
+              true,
+            );
+            assert.equal(
+              (await teacher.call(`/api/students/${victim.id}`, "DELETE"))
+                .status,
+              404,
+            );
+          },
+        );
       } finally {
         await runtime.close();
       }

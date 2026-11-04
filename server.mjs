@@ -2,6 +2,7 @@ import {
   wordAvailableFor,
   reviewWordKey,
   learningWords,
+  wordAvailableToClass,
 } from "./public/word-banks.js";
 import { validateCourses } from "./lib/courses.mjs";
 import {
@@ -333,8 +334,16 @@ function taskCreate(owner, b) {
     !["choice", "fill"].includes(b.questionType)
   )
     fail(400, "请选择选择题或填空题。");
+  const selectedClasses = classViews(owner).filter((c) =>
+    b.classIds?.includes(c.id),
+  );
   const pool = wordsFor(owner)
-    .filter((w) => wordAvailableFor(w, b.program, b.subject))
+    .filter(
+      (w) =>
+        wordAvailableFor(w, b.program, b.subject) &&
+        selectedClasses.length > 0 &&
+        selectedClasses.every((c) => wordAvailableToClass(w, c)),
+    )
     .map((w) => ({ ...w, subject: b.subject }));
   if (!Array.isArray(b.wordIds) || !b.wordIds.length || b.wordIds.length > 100)
     fail(400, "每份任务请选择 1–100 个词汇。");
@@ -904,7 +913,7 @@ async function api(req, res, url) {
       className: cls.name,
       program: cls.program,
       subjects,
-      words: learningWords(wordsFor(u.owner_id), cls.program, subjects),
+      words: learningWords(wordsFor(u.owner_id), cls.program, subjects, cls),
     };
   }
   if (path === "/api/words" && method === "GET") {
@@ -975,6 +984,40 @@ async function api(req, res, url) {
       db.exec("ROLLBACK");
       throw e;
     }
+  }
+  const removeStudent = path.match(/^\/api\/students\/([^/]+)$/);
+  if (removeStudent && method === "DELETE") {
+    if (u.role !== "teacher") fail(403, "仅 master 可删除学生。");
+    const sid = removeStudent[1];
+    if (
+      !one(
+        "SELECT id FROM users WHERE id=? AND owner_id=? AND role='student'",
+        sid,
+        u.id,
+      )
+    )
+      fail(404, "未找到学生或已删除。");
+    db.exec("BEGIN");
+    try {
+      run("DELETE FROM sessions WHERE user_id=?", sid);
+      run("DELETE FROM mistakes WHERE student_id=?", sid);
+      run("DELETE FROM attempts WHERE student_id=?", sid);
+      run(
+        "UPDATE tasks SET audience=(SELECT json_group_array(value) FROM json_each(tasks.audience) WHERE value<>?) WHERE owner_id=? AND json_type(audience)='array'",
+        sid,
+        u.id,
+      );
+      run(
+        "DELETE FROM users WHERE id=? AND owner_id=? AND role='student'",
+        sid,
+        u.id,
+      );
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    return { ok: true };
   }
   const reset = path.match(/^\/api\/students\/([^/]+)\/invite$/);
   if (reset && method === "POST") {

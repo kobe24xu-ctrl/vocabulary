@@ -3,6 +3,7 @@ import {
   wordAvailableFor,
   reviewWordKey,
   learningWords,
+  wordAvailableToClass,
 } from "../public/word-banks.js";
 import { validateCourses } from "../lib/courses.mjs";
 import {
@@ -413,7 +414,18 @@ function service(env, request, headers = new Headers(SECURITY)) {
     )
       fail(400, "请选择选择题或填空题。");
     const pool = context.words
-      .filter((w) => wordAvailableFor(w, b.program, b.subject))
+      .filter(
+        (w) =>
+          wordAvailableFor(w, b.program, b.subject) &&
+          Array.isArray(b.classIds) &&
+          b.classIds.length > 0 &&
+          b.classIds.every((cid) =>
+            wordAvailableToClass(
+              w,
+              context.classes.find((c) => c.id === cid),
+            ),
+          ),
+      )
       .map((w) => ({ ...w, subject: b.subject }));
     if (
       !Array.isArray(b.wordIds) ||
@@ -1045,7 +1057,12 @@ function service(env, request, headers = new Headers(SECURITY)) {
         className: cls.name,
         program: cls.program,
         subjects,
-        words: learningWords(await wordsFor(u.owner_id), cls.program, subjects),
+        words: learningWords(
+          await wordsFor(u.owner_id),
+          cls.program,
+          subjects,
+          cls,
+        ),
       };
     }
     if (path === "/api/words" && method === "GET") {
@@ -1101,6 +1118,47 @@ function service(env, request, headers = new Headers(SECURITY)) {
       const result = await studentData(u.id, rows);
       await batch(result.statements);
       return { students: result.students };
+    }
+    const removeStudent = path.match(/^\/api\/students\/([^/]+)$/);
+    if (removeStudent && method === "DELETE") {
+      teacher(u);
+      const sid = removeStudent[1];
+      if (
+        !(await one(
+          "SELECT id FROM users WHERE id=? AND owner_id=? AND role='student'",
+          sid,
+          u.id,
+        ))
+      )
+        fail(404, "未找到学生或已删除。");
+      await batch([
+        statement(
+          "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE id=? AND owner_id=? AND role='student')",
+          sid,
+          u.id,
+        ),
+        statement(
+          "DELETE FROM mistakes WHERE student_id IN (SELECT id FROM users WHERE id=? AND owner_id=? AND role='student')",
+          sid,
+          u.id,
+        ),
+        statement(
+          "DELETE FROM attempts WHERE student_id IN (SELECT id FROM users WHERE id=? AND owner_id=? AND role='student')",
+          sid,
+          u.id,
+        ),
+        statement(
+          "UPDATE tasks SET audience=(SELECT json_group_array(value) FROM json_each(tasks.audience) WHERE value<>?) WHERE owner_id=? AND json_type(audience)='array'",
+          sid,
+          u.id,
+        ),
+        statement(
+          "DELETE FROM users WHERE id=? AND owner_id=? AND role='student'",
+          sid,
+          u.id,
+        ),
+      ]);
+      return { ok: true };
     }
     const reset = path.match(/^\/api\/students\/([^/]+)\/invite$/);
     if (reset && method === "POST") {

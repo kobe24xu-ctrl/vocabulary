@@ -1,4 +1,8 @@
-import { wordAvailableFor, sharedWordSubjects } from "./word-banks.js";
+import {
+  wordAvailableFor,
+  sharedWordSubjects,
+  wordAvailableToClass,
+} from "./word-banks.js";
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -315,7 +319,7 @@ function studentsView() {
       (state.filter.classId === "all" || s.classId === state.filter.classId) &&
       s.name.includes(state.filter.search),
   );
-  return `${heading("学生名单", "每一位学生的练习与进步，都有迹可循。", `<button class="btn btn-light" data-action="export-students">${icon("download")}导出名单</button><button class="btn btn-primary" data-action="add-students">${icon("plus")}添加学生</button>`)}${filters({ classes: true, search: true })}<div class="panel"><div class="panel-header"><h2>班级学生 <small class="muted">&nbsp; ${rows.length} 位</small></h2><span class="muted" style="font-size:10px">学生通过账号登录，考试与错题跨设备保存</span></div><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>网页账号</th><th>课程项目 / 班级</th><th>完成听写</th><th>平均成绩</th><th>待复习错词</th><th>学习入口</th></tr></thead><tbody>${rows.map((s) => `<tr><td><div class="person"><span class="avatar">${esc(s.name.slice(-1))}</span><strong>${esc(s.name)}</strong></div></td><td>${esc(s.username || "尚未开通")}<div class="table-secondary">${s.accountReady ? "已开通" : "等待学生开通"}</div></td><td>${esc(clsName(s.classId))}<div class="table-secondary">${esc(s.program)}</div></td><td>${s.attempts} 次</td><td><span class="score ${s.average !== null && s.average < 60 ? "low" : ""}">${s.average ?? "—"}</span>${s.average !== null ? ' <small class="muted">分</small>' : ""}</td><td>${s.mistakes ? badge(`${s.mistakes} 个`, "gold") : '<span class="muted">暂无</span>'}</td><td><button class="btn btn-light btn-sm" data-action="student-invite" data-id="${s.id}">${icon("repeat")}重置并获取入口</button></td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("这里还没有学生", "先创建班级，再批量添加学生姓名。") : ""}</div>`;
+  return `${heading("学生名单", "每一位学生的练习与进步，都有迹可循。", `<button class="btn btn-light" data-action="export-students">${icon("download")}导出名单</button><button class="btn btn-primary" data-action="add-students">${icon("plus")}添加学生</button>`)}${filters({ classes: true, search: true })}<div class="panel"><div class="panel-header"><h2>班级学生 <small class="muted">&nbsp; ${rows.length} 位</small></h2><span class="muted" style="font-size:10px">学生通过账号登录，考试与错题跨设备保存</span></div><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>网页账号</th><th>课程项目 / 班级</th><th>完成听写</th><th>平均成绩</th><th>待复习错词</th><th>账号与操作</th></tr></thead><tbody>${rows.map((s) => `<tr><td><div class="person"><span class="avatar">${esc(s.name.slice(-1))}</span><strong>${esc(s.name)}</strong></div></td><td>${esc(s.username || "尚未开通")}<div class="table-secondary">${s.accountReady ? "已开通" : "等待学生开通"}</div></td><td>${esc(clsName(s.classId))}<div class="table-secondary">${esc(s.program)}</div></td><td>${s.attempts} 次</td><td><span class="score ${s.average !== null && s.average < 60 ? "low" : ""}">${s.average ?? "—"}</span>${s.average !== null ? ' <small class="muted">分</small>' : ""}</td><td>${s.mistakes ? badge(`${s.mistakes} 个`, "gold") : '<span class="muted">暂无</span>'}</td><td><button class="btn btn-light btn-sm" data-action="student-invite" data-id="${s.id}">${icon("repeat")}重置并获取入口</button><button class="btn btn-danger btn-sm" data-action="delete-student" data-id="${s.id}">删除学生</button></td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("这里还没有学生", "先创建班级，再批量添加学生姓名。") : ""}</div>`;
 }
 function wordSubjects(program) {
   if (program === "all") return state.config.subjects;
@@ -401,7 +405,10 @@ function learningView() {
     );
   const subjects = data.subjects;
   const groupName =
-    data.program === "NCUK 国际预科" ? "Topic" : "Topic / 周次 / 单元";
+    ["Business", "Economics"].includes(state.filter.subject) &&
+    data.program === "NCUK 国际预科"
+      ? "Topic"
+      : "Topic / 周次 / 单元";
   if (
     state.filter.subject !== "all" &&
     !subjects.includes(state.filter.subject)
@@ -429,7 +436,7 @@ function learningView() {
       `${w.term} ${w.translation}`.toLowerCase().includes(search),
   );
   const limit = state.wordLimit || 60;
-  return `${heading("词汇学习", `${data.className} · ${data.program === "NCUK 国际预科" ? "全部 Topic 长期开放" : "全部周次与单元长期开放"}，无需等待老师发布考试。`)}<div class="alert">${icon("book")} 选择科目及${groupName}即可学习，支持预习与回顾。内容包含词汇、中文释义和双语场景例句；场景例句为教学材料，并非官方试题。</div>${filters({ program: false, subject: true, subjectOptions: subjects, search: true })}<div class="toolbar"><select data-filter="group" aria-label="按分组学习">${option("all", `全部 ${groupName}`, group)}${groups.map((g) => option(g, g, group)).join("")}${available.some((w) => !w.groups.length) ? option("ungrouped", "未分组词汇", group) : ""}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, limit)} 条</span></div><div class="cards-grid">${words
+  return `${heading("词汇学习", `${data.className} · ${data.program === "NCUK 国际预科" ? "全部分组长期开放" : "全部周次与单元长期开放"}，无需等待老师发布考试。`)}<div class="alert">${icon("book")} 选择科目及${groupName}即可学习，支持预习与回顾。内容包含词汇、中文释义和双语场景例句；场景例句为教学材料，并非官方试题。</div>${filters({ program: false, subject: true, subjectOptions: subjects, search: true })}<div class="toolbar"><select data-filter="group" aria-label="按分组学习">${option("all", `全部 ${groupName}`, group)}${groups.map((g) => option(g, g, group)).join("")}${available.some((w) => !w.groups.length) ? option("ungrouped", "未分组词汇", group) : ""}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, limit)} 条</span></div><div class="cards-grid">${words
     .slice(0, limit)
     .map(
       (w) =>
@@ -795,7 +802,11 @@ function taskWords() {
     subject = form.elements.subject.value;
   const available =
     cls && subject
-      ? state.words.filter((w) => wordAvailableFor(w, cls.program, subject))
+      ? state.words.filter(
+          (w) =>
+            wordAvailableFor(w, cls.program, subject) &&
+            wordAvailableToClass(w, cls),
+        )
       : [];
   const groupSelect = form.elements.wordGroup;
   const scope = `${cls?.id || ""}:${subject}`;
@@ -1303,6 +1314,31 @@ document.addEventListener("click", async (e) => {
           "每份最多 100 个词汇，已勾选前 100 个；可按 Topic、周次或单元分批发布。",
         );
       taskSummary();
+      return;
+    }
+    if (action === "delete-student") {
+      const student = state.students.find((s) => s.id === b.dataset.id);
+      modal(
+        "删除学生",
+        "请核对姓名和班级，删除后无法恢复。",
+        `<div class="alert error">即将删除 <strong>${esc(student.name)}</strong>（${esc(clsName(student.classId))}）的账号、成绩、错题和登录记录。其他学生、班级、词库及考试任务保留。</div>`,
+        `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-danger" data-action="confirm-delete-student" data-id="${student.id}">确认删除该学生</button>`,
+      );
+      return;
+    }
+    if (action === "confirm-delete-student") {
+      b.disabled = true;
+      try {
+        await api(`/api/students/${encodeURIComponent(b.dataset.id)}`, {
+          method: "DELETE",
+        });
+        closeModal();
+        await load();
+        render();
+        toast("学生已删除。");
+      } finally {
+        b.disabled = false;
+      }
       return;
     }
     if (action === "student-invite") {

@@ -6,7 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(join(root, path), "utf8");
 let app = read("public/app.js")
   .replace(/^import .*speech\.js.*;\n/m, "")
-  .replace(/^import .*word-banks\.js.*;\n/m, "")
+  .replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/word-banks\.js["'];\n/m, "")
   .replaceAll('"lexiclass-student-entry"', '"lexiclass-offline-entry"')
   .replaceAll('"lexiclass-exam"', '"lexiclass-offline-exam"')
   .replaceAll("${location.origin}/#invite=", "${DEMO_FILE_BASE}#invite=")
