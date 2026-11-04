@@ -159,7 +159,11 @@ try {
   await page.getByRole("button", { name: "回到教师端", exact: true }).click();
   await page.getByRole("heading", { name: "教学概览", exact: true }).waitFor();
   await page.locator(".nav [data-view=tasks]").click();
-  await page.getByRole("button", { name: "全部展开", exact: true }).click();
+  await page
+    .locator("[data-action=tasks-class]")
+    .filter({ hasText: "UNSW 商科 A 班" })
+    .click();
+  await page.locator("[data-action=tasks-subject][data-key=Economics]").click();
   await page.locator(`[data-action=task-results][data-id="${taskId}"]`).click();
   await page.getByRole("heading", { name: "成绩分析", exact: true }).waitFor();
   const row = page

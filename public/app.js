@@ -42,6 +42,26 @@ const esc = (v) =>
       ],
   );
 const paths = {
+  back: "M19 12H5 M11 6l-6 6 6 6",
+  calendar:
+    "M5 5h14a2 2 0 0 1 2 2v14H3V7a2 2 0 0 1 2-2 M7 3v4 M17 3v4 M3 11h18 M7 15h2 M13 15h2 M7 18h2",
+  business: "M8 6V3h8v3 M3 6h18v14H3z M3 10l9 5 9-5 M10 13h4v4h-4z",
+  accounting:
+    "M5 2h14v20H5z M8 6h8 M8 10h2 M14 10h2 M8 14h2 M14 14h2 M8 18h2 M14 18h2",
+  businessMath:
+    "M4 3h12v18H4z M7 6h6 M7 10h1 M11 10h2 M7 14h1 M11 14h2 M18 9l4-4 M18 5h4v4 M18 16h4 M20 14v4",
+  engineeringMath:
+    "M3 18l5-12 5 12 M5 14h6 M15 20V4h6 M17 8h4 M17 12h4 M17 16h4",
+  physics:
+    "M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4 M3 12a9 4 0 1 0 18 0 9 4 0 1 0-18 0 M7.5 4.2a9 4 60 1 0 9 15.6 9 4 60 1 0-9-15.6 M16.5 4.2a9 4 120 1 0-9 15.6 9 4 120 1 0 9-15.6",
+  chemistry:
+    "M9 3h6 M10 3v7L4 20q-1 2 2 2h12q3 0 2-2l-6-10V3 M7 15h10 M9 18h1 M14 19h1",
+  computer: "M3 3h18v14H3z M9 21h6 M12 17v4 M7 7l3 3-3 3 M13 13h4",
+  language:
+    "M3 4h12 M9 2v2 M5 8q2 6 9 8 M13 5q-2 7-10 11 M13 21l4-11 4 11 M15 17h4",
+  writing: "M4 3h10v5h5v13H4z M14 3l5 5 M8 11h6 M8 15h4 M15 19l5-5 2 2-5 5h-2z",
+  biology: "M6 3q12 3 0 18 M18 3Q6 6 18 21 M8 6h8 M9 10h6 M9 14h6 M8 18h8",
+  statistics: "M3 20h18 M6 16v-4 M12 16V5 M18 16V9 M4 7l5-4 7 3 5-3",
   grid: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
   book: "M4 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H3V4z M13 7a3 3 0 0 1 3-3h5v15h-5a4 4 0 0 0-3 2",
   clipboard:
@@ -76,19 +96,23 @@ const paths = {
 const icon = (name, cls = "") =>
   `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name] || paths.book}"/></svg>`;
 const subjectIcon = (s) =>
-  s === "Economics"
-    ? "economy"
-    : [
-          "Mathematics",
-          "Integrated Mathematics",
-          "Technical Mathematics",
-        ].includes(s)
-      ? "math"
-      : s === "Academic English"
-        ? "book"
-        : s === "Computer Science"
-          ? "grid"
-          : "leaf";
+  ({
+    Economics: "economy",
+    Business: "business",
+    Accounting: "accounting",
+    Mathematics: "math",
+    "Integrated Mathematics": "businessMath",
+    "Technical Mathematics": "engineeringMath",
+    Physics: "physics",
+    Chemistry: "chemistry",
+    "Computer Science": "computer",
+    English: "language",
+    "Academic English": "writing",
+    "Language Learning": "language",
+    "Academic Writing": "writing",
+    Biology: "biology",
+    Statistics: "statistics",
+  })[s] || "book";
 let uiFontSize = 18;
 try {
   const stored = Number(localStorage.getItem("classwords-ui-font-size"));
@@ -114,6 +138,112 @@ function changeFontSize(button) {
     node.outerHTML = fontControls();
   });
 }
+const CLASS_TONES = [
+  ["#365f85", "#edf3fa", "#b9cde0"],
+  ["#8a5574", "#f8eff4", "#dec5d5"],
+  ["#926627", "#fcf4e5", "#e3cea7"],
+  ["#397776", "#edf7f5", "#b9d9d5"],
+  ["#665d9a", "#f2f0fa", "#ccc6e5"],
+  ["#9a5746", "#fbf0ea", "#e5c8bb"],
+  ["#536e38", "#f1f6e9", "#cad8b7"],
+];
+function classTone(cls) {
+  const id = typeof cls === "string" ? cls : cls?.id;
+  const ids = state.classes.map((c) => c.id).sort();
+  const index =
+    state.user?.role === "student" && state.user.classId === id
+      ? (state.user.classColorIndex ?? 0)
+      : Math.max(0, ids.indexOf(id));
+  return CLASS_TONES[index % CLASS_TONES.length];
+}
+function classStyle(cls) {
+  const [color, soft, border] = classTone(cls);
+  return `--class-color:${color};--class-soft:${soft};--class-border:${border}`;
+}
+const backButton = (action, label = "返回班级列表") =>
+  `<button class="btn btn-light back-button" data-action="${action}">${icon("back")}${label}</button>`;
+function scopeTrail({ program, subject, student = false } = {}) {
+  return `<nav class="scope-trail" aria-label="词库位置">${backButton(student ? "learning-back" : "library-back", subject && subject !== "all" ? "返回科目选择" : "返回项目选择")}<span>${esc(program || state.learning?.className || "")}</span>${subject && subject !== "all" ? `${icon("chevron")}<strong>${icon(subjectIcon(subject))}${esc(nameSubject(subject))}</strong>` : ""}</nav>`;
+}
+let choiceControlIndex = 0;
+// Keep the original select as the form value, but expose direct buttons to users.
+function enhanceChoiceControls() {
+  const selectors = [
+    'select[data-filter="program"]',
+    'select[data-filter="classId"]',
+    'select[data-filter="subject"]',
+    'select[data-grade="program"]',
+    'select[data-grade="classId"]',
+    'select[data-grade="subject"]',
+    'select[name="classId"]',
+    'select[name="subject"]',
+    'select[name="program"]',
+  ];
+  document.querySelectorAll(selectors.join(",")).forEach((select) => {
+    const kind = select.dataset.filter || select.dataset.grade || select.name;
+    if (!select.id) select.id = `direct-select-${++choiceControlIndex}`;
+    select.classList.add("card-select-native");
+    select.tabIndex = -1;
+    select.setAttribute("aria-hidden", "true");
+    let list = select.nextElementSibling;
+    if (!list?.classList.contains("direct-choice-list")) {
+      list = document.createElement("div");
+      list.className = `direct-choice-list ${kind === "classId" ? "class-options" : ""}`;
+      list.setAttribute("role", "group");
+      select.after(list);
+    }
+    const label =
+      select.getAttribute("aria-label") ||
+      select.closest("label")?.querySelector("span")?.textContent ||
+      (kind === "classId"
+        ? "选择班级"
+        : kind === "subject"
+          ? "选择科目"
+          : "选择项目");
+    list.setAttribute("aria-label", label);
+    const options = [...select.options].filter((o) => o.value !== "");
+    const html =
+      options
+        .map((o) => {
+          const cls =
+            kind === "classId"
+              ? state.classes.find((c) => c.id === o.value)
+              : null;
+          const symbol =
+            kind === "classId"
+              ? "class"
+              : kind === "subject"
+                ? subjectIcon(o.value)
+                : "book";
+          return `<button type="button" class="direct-choice ${o.selected ? "selected" : ""} ${cls ? "class-tinted" : ""}" style="${cls ? classStyle(cls) : ""}" data-action="choose-option" data-select="${esc(select.id)}" data-key="${esc(o.value)}" aria-pressed="${o.selected}" ${select.disabled || o.disabled ? "disabled" : ""}>${icon(o.value === "all" ? "grid" : symbol)}<span>${esc(o.textContent)}</span>${o.selected ? icon("check") : ""}</button>`;
+        })
+        .join("") ||
+      `<span class="muted">${esc(select.options[0]?.textContent || "暂无可选内容")}</span>`;
+    if (list._choiceMarkup !== html) {
+      list._choiceMarkup = html;
+      list.innerHTML = html;
+    }
+    list.classList.toggle("needs-selection", select.required && !select.value);
+  });
+}
+new MutationObserver(enhanceChoiceControls).observe(document.body, {
+  childList: true,
+  subtree: true,
+});
+document.addEventListener(
+  "invalid",
+  (e) => {
+    if (!e.target.matches(".card-select-native")) return;
+    e.preventDefault();
+    const list = e.target.nextElementSibling;
+    list?.classList.add("selection-error");
+    list?.querySelector("button:not(:disabled)")?.focus();
+    if (e.target.form)
+      formError(e.target.form, "请先选择班级、项目和科目中尚未选定的内容。");
+  },
+  true,
+);
+
 function retakeForm(taskId, studentId = "") {
   const task = state.tasks.find((t) => t.id === taskId);
   if (!task || task.closesAt > now()) {
@@ -165,6 +295,8 @@ const state = {
   scheduleDates: new Set(),
   scheduleOverrides: {},
   scheduleMonth: "",
+  studentCalendarMonth: "",
+  studentCalendarDate: "",
   students: [],
   classes: [],
   words: [],
@@ -294,8 +426,7 @@ function navItems() {
           "听写任务",
           state.tasks.filter((t) => statusOf(t)[0] === "进行中").length,
         ],
-        ["classes", "class", "班级管理"],
-        ["students", "users", "学生名单"],
+        ["classes", "class", "班级与学生"],
         ["words", "book", "课程词库"],
         ["results", "chart", "成绩分析"],
       ]
@@ -321,6 +452,7 @@ function navItems() {
         ],
       ];
 }
+let examCalendarReady = false;
 let examEventSource = null,
   examFallbackTimer = null,
   examNotificationUser = null,
@@ -390,6 +522,8 @@ function receiveExamAlerts(snapshot, userId) {
   if (Number.isFinite(snapshot.serverTime))
     state.serverOffset = snapshot.serverTime - Date.now();
   examAlertItems = Array.isArray(snapshot.exams) ? snapshot.exams : [];
+  examCalendarReady = true;
+  paintStudentCalendar();
   const unseen = visibleExamAlerts().filter(
     (t) => !examAnnounced.has(alertPhaseKey(t)),
   );
@@ -420,6 +554,9 @@ function syncExamAlerts() {
   if (examNotificationUser !== userId) {
     stopExamAlerts();
     examNotificationUser = userId;
+    examCalendarReady = false;
+    state.studentCalendarMonth = "";
+    state.studentCalendarDate = "";
     examAnnounced = new Set();
     examAcknowledged = new Set();
     examCompletedHere = new Set();
@@ -521,20 +658,6 @@ function heading(title, subtitle, actions = "") {
 function stat(label, value, unit, ic, foot, color = "") {
   return `<div class="stat-card"><div class="stat-top">${label}<span class="stat-icon ${color}">${icon(ic)}</span></div><div class="stat-number mono">${value ?? "—"}<small>${unit}</small></div><div class="stat-foot">${foot}</div></div>`;
 }
-function classCards(classes = state.classes) {
-  return classes
-    .map(
-      (c) =>
-        `<div class="class-card clickable" data-action="class-detail" data-id="${c.id}" tabindex="0" role="button"><div class="program-label">${esc(programShort(c.program))} FOUNDATION</div><h3>${esc(c.name)}</h3><p>${esc(c.program)}</p><p class="muted">${(c.courses || []).map((course) => esc(course.title)).join(" · ") || "科目尚未配置"}</p><button class="btn btn-light btn-sm" data-action="class-courses" data-id="${c.id}">课程内容</button><div class="class-card-bottom"><div class="mini-avatars">${state.students
-          .filter((s) => s.classId === c.id)
-          .slice(0, 4)
-          .map((s) => `<span>${esc(s.name.slice(-1))}</span>`)
-          .join(
-            "",
-          )}</div><span>${c.studentCount} 位学生 &nbsp; ${icon("arrow")}</span></div></div>`,
-    )
-    .join("");
-}
 function recentTask(t) {
   const [label, color] = statusOf(t);
   return `<div class="task-row"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div><div class="task-detail"><div class="task-title">${esc(t.title)}</div><div class="task-meta"><span>${esc(programShort(t.program))} · ${esc(nameSubject(t.subject))}</span><span>·</span><span>${t.questionCount} 题 / ${t.duration} 分钟</span><span>·</span><span>${t.classIds.map(clsName).map(esc).join("、")}</span></div></div><div class="task-side">${badge(label, color, true)}<p>${t.submitted} / ${t.studentCount} 已提交</p></div><button class="btn btn-quiet" data-action="task-results" data-id="${t.id}" title="查看成绩">${icon("chevron")}</button></div>`;
@@ -564,13 +687,19 @@ function dashboard() {
   const a = state.analytics,
     { all, scope, rows } = gradeData();
   const projectRows = all.filter(
-    (r) => a.program === "all" || r.program === a.program,
+    (r) =>
+      (a.program === "all" || r.program === a.program) &&
+      (a.classId === "all" || r.classId === a.classId),
   );
   const subjects = [
     ...new Set([
       ...projectRows.map((r) => r.subject),
       ...state.classes
-        .filter((c) => a.program === "all" || c.program === a.program)
+        .filter(
+          (c) =>
+            (a.program === "all" || c.program === a.program) &&
+            (a.classId === "all" || c.id === a.classId),
+        )
         .flatMap((c) => (c.courses || []).map((x) => x.subject)),
     ]),
   ];
@@ -580,11 +709,11 @@ function dashboard() {
   const weekly = learningGroups(
     scope.filter((r) => r.examAt <= now() || completedGrade(r)),
   );
-  const classes = state.classes.map((c, i) => ({
+  const classes = state.classes.map((c) => ({
     key: c.id,
     label: c.name,
     value: gradeAverage(rows.filter((r) => r.classId === c.id)),
-    color: REPORT_COLORS[i % REPORT_COLORS.length],
+    color: classTone(c)[0],
   }));
   const visible = rows.filter((r) => a.band === "all" || inScoreBin(r, a.band));
   return `${heading("教学概览", "先看整体变化，再按班级进入详细成绩报告。", `<button class="btn btn-light" data-action="nav" data-view="results">${icon("chart")}按班级查看成绩</button><button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}<section class="panel grade-filters"><label>课程项目<select data-grade="program" aria-label="成绩项目">${option("all", "全部项目", a.program)}${state.config.programs.map((p) => option(p, p, a.program)).join("")}</select></label><label>科目<select data-grade="subject" aria-label="成绩科目">${option("all", "全部科目", a.subject)}${subjects.map((s) => option(s, nameSubject(s), a.subject)).join("")}</select></label><label>周次 / Topic<select data-grade="group" aria-label="成绩周次">${option("all", "全部周次 / Topic", a.group)}${groups.map((g) => option(g, learningLabel(g), a.group)).join("")}${scope.some((r) => !r.groups.length) ? option("ungrouped", "未标注周次 / 单元", a.group) : ""}</select></label><label>班级<select data-grade="classId" aria-label="成绩班级">${option("all", "全部班级", a.classId)}${state.classes
@@ -610,7 +739,7 @@ function filters({
   subjectPlaceholder = "全部科目",
   search = false,
 } = {}) {
-  return `<div class="toolbar">${search ? `<div class="search-field">${icon("search")}<input data-filter="search" aria-label="搜索" placeholder="搜索${state.view === "students" ? "姓名" : "名称或词汇"}…" value="${esc(state.filter.search)}"></div>` : ""}${program ? `<select data-filter="program" aria-label="按课程项目筛选">${option("all", "全部课程项目", state.filter.program)}${state.config.programs.map((p) => option(p, p, state.filter.program)).join("")}</select>` : ""}${
+  return `<div class="toolbar">${search ? `<div class="search-field">${icon("search")}<input data-filter="search" aria-label="搜索" placeholder="搜索${["students", "classes"].includes(state.view) ? "班级或学生姓名" : "听写或词汇"}…" value="${esc(state.filter.search)}"></div>` : ""}${program ? `<select data-filter="program" aria-label="按课程项目筛选">${option("all", "全部课程项目", state.filter.program)}${state.config.programs.map((p) => option(p, p, state.filter.program)).join("")}</select>` : ""}${
     classes
       ? `<select data-filter="classId" aria-label="按班级筛选">${option("all", "全部班级", state.filter.classId)}${state.classes
           .filter(
@@ -651,54 +780,73 @@ function filteredTasks() {
   );
 }
 function tasksView() {
+  const cls = state.classes.find((c) => c.id === state.filter.classId);
   const tasks = filteredTasks();
-  const classes = state.classes
-    .filter((c) => tasks.some((t) => t.classIds.includes(c.id)))
-    .sort(
-      (a, b) =>
-        a.program.localeCompare(b.program) ||
-        a.name.localeCompare(b.name, "zh-CN", { numeric: true }),
+  const headingActions = `${cls ? backButton("tasks-back", state.filter.subject !== "all" ? "返回班级科目" : "返回班级列表") : ""}<button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`;
+  const header = heading(
+    "听写任务",
+    "点击班级，再点击科目查看考试；各班使用固定的区分色。",
+    headingActions,
+  );
+  if (!cls)
+    return (
+      header +
+      filters({ search: true }) +
+      classChoiceCards("tasks-class", state.filter.search)
     );
-  const tree = classes
-    .map((c) => {
-      const rows = tasks.filter((t) => t.classIds.includes(c.id));
-      const subjects = [
-        ...new Set(rows.map((t) => taskSubjectForClass(t, c))),
-      ].sort((a, b) => nameSubject(a).localeCompare(nameSubject(b), "zh-CN"));
-      const classKey = `class:${c.id}`;
-      return `<details class="task-class-folder" data-task-folder="${classKey}" ${(state.taskFolders[classKey] ?? state.filter.classId !== "all") ? "open" : ""}><summary><span>${esc(c.name)}<small>${esc(c.program)}</small></span><span>${subjects.length} 门科目 · ${rows.length} 次听写</span></summary>${subjects
-        .map((subject) => {
-          const key = `${c.id}:${subject}`,
-            entries = rows
-              .filter((t) => taskSubjectForClass(t, c) === subject)
-              .sort((a, b) => b.opensAt - a.opensAt);
-          return `<details class="task-subject-folder" data-task-folder="${key}" ${(state.taskFolders[key] ?? state.filter.subject !== "all") ? "open" : ""}><summary><strong>${esc(nameSubject(subject))}</strong><span>${entries.length} 次听写</span></summary><div class="task-list-head"><span>听写名称 / 题型</span><span>开放 / 截止</span><span>提交</span><span>状态</span><span>操作</span></div>${entries
-            .map((t) => {
-              const [label, color] = statusOf(t);
-              return `<article class="task-table-row"><div><strong>${esc(t.title)}</strong><small>${t.questionCount} 题 · ${t.duration} 分钟 · ${esc(taskModeName(t))}</small></div><div>${date(t.opensAt)}<small>至 ${date(t.closesAt)}</small></div><div>${t.submitted} / ${t.studentCount}</div><div>${badge(label, color, true)}</div><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">成绩</button>${t.closesAt <= now() ? `<button class="btn btn-light btn-sm" data-action="retake-create" data-id="${t.id}">安排补考</button>` : ""}<button class="btn btn-danger btn-sm" data-action="delete-task" data-id="${t.id}">删除</button></div></article>`;
-            })
-            .join("")}</details>`;
-        })
-        .join("")}</details>`;
+  const subjects = [
+    ...new Set([
+      ...(cls.courses || []).map((c) => c.subject),
+      ...state.tasks
+        .filter((t) => t.classIds.includes(cls.id))
+        .map((t) => taskSubjectForClass(t, cls)),
+    ]),
+  ];
+  const subject = state.filter.subject;
+  const context = `<section class="class-navigation-context class-tinted" style="${classStyle(cls)}"><span class="class-emblem">${icon("class")}</span><div><small>${esc(cls.program)}</small><h2>${esc(cls.name)}</h2><p>${state.students.filter((s) => s.classId === cls.id).length} 位学生 · ${subjects.length} 门科目</p></div></section>`;
+  if (subject === "all")
+    return (
+      header +
+      context +
+      `<div class="task-course-choices scope-subject-grid">${
+        subjects
+          .map((s) => {
+            const entries = state.tasks.filter(
+              (t) =>
+                t.classIds.includes(cls.id) &&
+                taskSubjectForClass(t, cls) === s,
+            );
+            return `<button data-action="tasks-subject" data-key="${esc(s)}"><span class="subject-icon">${icon(subjectIcon(s))}</span><div><strong>${esc(nameSubject(s))}</strong><small>${entries.length} 次听写 · ${entries.filter((t) => t.opensAt <= now() && t.closesAt > now()).length} 场进行中</small></div>${icon("arrow")}</button>`;
+          })
+          .join("") || empty("尚未配置科目", "请在班级与学生中配置本班课程。")
+      }</div>`
+    );
+  const entries = tasks.sort((a, b) => b.opensAt - a.opensAt);
+  const rows = entries
+    .map((t) => {
+      const [label, color] = statusOf(t);
+      return `<article class="task-table-row"><div><strong>${esc(t.title)}</strong><small>${t.questionCount} 题 · ${t.duration} 分钟 · ${esc(taskModeName(t))}${t.retakeOf ? " · 个人补考" : ""}</small></div><div>${date(t.opensAt)}<small>至 ${date(t.closesAt)}</small></div><div>${t.submitted} / ${t.studentCount}</div><div>${badge(label, color, true)}</div><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">成绩</button>${t.closesAt <= now() ? `<button class="btn btn-light btn-sm" data-action="retake-create" data-id="${t.id}">安排补考</button>` : ""}<button class="btn btn-danger btn-sm" data-action="delete-task" data-id="${t.id}">删除</button></div></article>`;
     })
     .join("");
-  return `${heading("听写任务", "按班级与科目归档，展开查看具体考试。", `<button class="btn btn-light" data-action="task-folders" data-open="false">全部收起</button><button class="btn btn-light" data-action="task-folders" data-open="true">全部展开</button><button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}${filters({ classes: true, subject: true, search: true })}<div class="task-tree">${tree || empty("没有匹配的任务", "可调整筛选条件，或发布新的听写。")}</div>`;
-}
-function classesView() {
-  const classes = state.classes.filter(
-    (c) => state.filter.program === "all" || c.program === state.filter.program,
+  return (
+    header +
+    context +
+    `<div class="task-subject-title">${icon(subjectIcon(subject))}<h2>${esc(nameSubject(subject))}</h2><span>${entries.length} 次听写</span></div>${filters({ program: false, search: true })}<details class="task-subject-folder class-tinted" style="${classStyle(cls)}" data-task-folder="${cls.id}:${esc(subject)}" ${(state.taskFolders[`${cls.id}:${subject}`] ?? true) ? "open" : ""}><summary><strong>${icon(subjectIcon(subject))}${esc(nameSubject(subject))}</strong><span>点击收起 / 展开考试</span></summary><div class="task-list-head"><span>听写名称 / 题型</span><span>开放 / 截止</span><span>提交</span><span>状态</span><span>操作</span></div>${rows || empty("本科目还没有听写", "点击发布听写，为本班安排考试。")}</details>`
   );
-  return `${heading("班级管理", "所有课程项目，一个清晰有序的教学空间。", `<button class="btn btn-primary" data-action="create-class">${icon("plus")}新建班级</button>`)}${filters()}<div class="class-cards">${classCards(classes)}</div>${!classes.length ? empty("从一个班级开始", "选择课程项目，创建班级后添加学生。", `<button class="btn btn-primary" data-action="create-class">新建班级</button>`) : ""}`;
+}
+
+function classesView() {
+  return studentsView();
 }
 function studentsView() {
   const cls = state.classes.find((c) => c.id === state.filter.classId);
   const q = state.filter.search.trim().toLowerCase();
   const title = heading(
-    "学生名单",
+    "班级与学生",
     cls
       ? "按班级管理学生账号，点击学生查看全科学习画像。"
       : "先选择班级，再展开学生名单。",
-    `<button class="btn btn-light" data-action="export-students">${icon("download")}导出${cls ? "本班" : "名单"}</button><button class="btn btn-primary" data-action="add-students">${icon("plus")}添加学生</button>`,
+    `<button class="btn btn-light" data-action="export-students">${icon("download")}导出${cls ? "本班" : "名单"}</button>${cls ? `<button class="btn btn-light" data-action="class-courses" data-id="${cls.id}">${icon("book")}管理课程</button><button class="btn btn-primary" data-action="add-students">${icon("plus")}添加学生</button>` : `<button class="btn btn-primary" data-action="create-class">${icon("plus")}新建班级</button>`}`,
   );
   if (!cls)
     return (
@@ -713,7 +861,7 @@ function studentsView() {
         `${s.name} ${s.username || ""}`.toLowerCase().includes(q),
     )
     .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
-  return `${title}<nav class="report-breadcrumb"><button data-action="roster-root">全部班级</button>${icon("chevron")}<strong>${esc(cls.name)}</strong></nav><div class="roster-context"><div><span>${esc(cls.program)}</span><h2>${esc(cls.name)}</h2><p>${state.students.filter((s) => s.classId === cls.id).length} 位学生 · ${(cls.courses || []).map((c) => esc(c.title || nameSubject(c.subject))).join(" · ")}</p></div><div class="search-field">${icon("search")}<input data-filter="search" aria-label="搜索本班学生" placeholder="搜索本班姓名或账号" value="${esc(state.filter.search)}"></div></div><div class="roster-student-grid">${
+  return `${title}<nav class="report-breadcrumb">${backButton("roster-root")}<button data-action="roster-root">全部班级</button>${icon("chevron")}<strong>${esc(cls.name)}</strong></nav><div class="roster-context class-tinted" style="${classStyle(cls)}"><div><span>${esc(cls.program)}</span><h2>${esc(cls.name)}</h2><p>${state.students.filter((s) => s.classId === cls.id).length} 位学生 · ${(cls.courses || []).map((c) => esc(c.title || nameSubject(c.subject))).join(" · ")}</p></div><div class="search-field">${icon("search")}<input data-filter="search" aria-label="搜索本班学生" placeholder="搜索本班姓名或账号" value="${esc(state.filter.search)}"></div></div><section class="class-courses-strip" aria-label="本班课程">${(cls.courses || []).map((c) => `<button class="course-tag" data-action="class-course-detail" data-id="${cls.id}" data-key="${esc(c.subject)}">${icon(subjectIcon(c.subject))}${esc(c.title || nameSubject(c.subject))}${icon("arrow")}</button>`).join("")}</section><div class="roster-student-grid class-tinted" style="${classStyle(cls)}">${
     rows
       .map((s) => {
         const history = reportData().filter((r) => r.studentId === s.id),
@@ -758,7 +906,10 @@ function wordsView() {
     "先选择项目与科目，再按教学周或Topic查阅词汇。",
     `<button class="btn btn-light" data-action="import-words">${icon("upload")}批量导入</button><button class="btn btn-primary" data-action="add-word">${icon("plus")}添加词汇</button>`,
   );
-  const controls = `<div class="library-scope-controls"><label><span>课程项目</span><select data-filter="program" aria-label="选择词库项目">${option("all", "请选择课程项目", program)}${state.config.programs.map((p) => option(p, p, program)).join("")}</select></label><label><span>科目</span><select data-filter="subject" aria-label="选择词库科目" ${program === "all" ? "disabled" : ""}>${option("all", program === "all" ? "先选择项目" : "请选择科目", state.filter.subject)}${program !== "all" ? subjects.map((s) => option(s, nameSubject(s), state.filter.subject)).join("") : ""}</select></label>${selected ? `<div class="search-field">${icon("search")}<input data-filter="search" aria-label="搜索当前科目词汇" placeholder="搜索这个科目的词汇…" value="${esc(state.filter.search)}"></div>` : ""}</div>`;
+  const controls =
+    program === "all"
+      ? ""
+      : scopeTrail({ program, subject: state.filter.subject });
   if (program === "all")
     return (
       header +
@@ -793,6 +944,7 @@ function wordsView() {
   return (
     header +
     controls +
+    `<div class="search-field library-search">${icon("search")}<input data-filter="search" aria-label="搜索当前科目词汇" placeholder="搜索这个科目的词汇…" value="${esc(state.filter.search)}"></div>` +
     `<div class="library-current-scope"><div><span>${esc(program)}</span><h2>${esc(nameSubject(state.filter.subject))}</h2></div><label><span>${groupType}</span><select data-filter="group" aria-label="按当前科目周次筛选">${option("all", `全部${groupType}`, group)}${groups.map((g) => option(g, libraryGroupLabel(g), group)).join("")}</select></label><p>${words.length} 个词汇 · 已显示 ${Math.min(words.length, state.wordLimit || 60)} 个</p></div><div class="cards-grid">${words
       .slice(0, state.wordLimit || 60)
       .map(
@@ -905,6 +1057,11 @@ function classChoiceCards(action = "report-class", search = "") {
       (state.filter.program === "all" || c.program === state.filter.program) &&
       (!q ||
         `${c.name} ${c.program}`.toLowerCase().includes(q) ||
+        (action === "tasks-class" &&
+          state.tasks.some(
+            (t) =>
+              t.classIds.includes(c.id) && t.title.toLowerCase().includes(q),
+          )) ||
         state.students.some(
           (s) =>
             s.classId === c.id &&
@@ -933,7 +1090,7 @@ function classChoiceCards(action = "report-class", search = "") {
             const exams = assessmentGroups(rows)
               .filter((e) => Number.isFinite(e.average))
               .slice(-8);
-            return `<button class="class-choice-card" data-action="${action}" data-id="${c.id}"><div class="class-choice-top"><span class="class-emblem">${icon("class")}</span><span>${students.length} 位学生</span></div><h3>${esc(c.name)}</h3><p>${(c.courses || []).map((x) => esc(x.title || nameSubject(x.subject))).join(" · ") || "尚未配置科目"}</p>${
+            return `<button class="class-choice-card class-tinted" style="${classStyle(c)}" data-action="${action}" data-id="${c.id}"><div class="class-choice-top"><span class="class-emblem">${icon("class")}</span><span>${students.length} 位学生</span></div><h3>${esc(c.name)}</h3><p>${(c.courses || []).map((x) => esc(x.title || nameSubject(x.subject))).join(" · ") || "尚未配置科目"}</p>${
               action === "report-class"
                 ? `<div class="class-choice-chart">${miniPlot(exams.map((e) => e.average))}<div><strong>${m.average ?? "—"}</strong><small>${m.average === null ? "等待首次提交" : "班级均分"}</small></div></div>`
                 : `<div class="class-avatar-row">${students
@@ -941,8 +1098,8 @@ function classChoiceCards(action = "report-class", search = "") {
                     .map((s) => `<i>${esc(s.name.slice(-1))}</i>`)
                     .join(
                       "",
-                    )}<span>${matched.length ? `找到 ${matched.length} 位匹配学生` : "按姓名查看与管理账号"}</span></div>`
-            }<footer><span>${action === "report-class" ? "查看各科成绩" : "展开学生名单"}</span>${icon("arrow")}</footer></button>`;
+                    )}<span>${matched.length ? `找到 ${matched.length} 位匹配学生` : action === "tasks-class" ? `${state.tasks.filter((t) => t.classIds.includes(c.id)).length} 次听写 · 点击选择科目` : "按姓名查看与管理账号"}</span></div>`
+            }<footer><span>${action === "report-class" ? "查看各科成绩" : action === "tasks-class" ? "选择科目，查看听写" : "管理课程与学生"}</span>${icon("arrow")}</footer></button>`;
           })
           .join("")}</div></section>`;
       })
@@ -1096,7 +1253,7 @@ function resultsView() {
       : cls
         ? "选择一门科目，查看周次走势与学生掌握情况。"
         : "从班级开始，逐层查看科目、周次与学生。";
-  const top = `${reportBreadcrumb(cls, student)}${heading(student ? "学生学习画像" : "成绩分析", intro, `<button class="btn btn-light" data-action="export-results">${icon("download")}导出当前成绩</button>`)}${cls ? `<div class="report-context"><div><span>${esc(cls.program)}</span><h2>${esc(title)}</h2></div>${reportStudentPicker()}</div>` : `<div class="report-entry-toolbar">${reportStudentPicker()}</div>`}`;
+  const top = `${reportBreadcrumb(cls, student)}${heading(student ? "学生学习画像" : "成绩分析", intro, `${cls ? backButton("report-back", r.subject || student ? "返回班级科目" : "返回班级列表") : ""}<button class="btn btn-light" data-action="export-results">${icon("download")}导出当前成绩</button>`)}${cls ? `<div class="report-context class-tinted" style="${classStyle(cls)}"><div><span>${esc(cls.program)}</span><h2>${esc(title)}</h2></div>${reportStudentPicker()}</div>` : `<div class="report-entry-toolbar">${reportStudentPicker()}</div>`}`;
   if (!cls) return top + classChoiceCards("report-class");
   const classRows = reportData().filter((x) => x.classId === cls.id);
   if (!r.subject && !student) {
@@ -1225,7 +1382,7 @@ function learningView() {
       `${w.term} ${w.translation}`.toLowerCase().includes(search),
   );
   const limit = state.wordLimit || 60;
-  return `${heading("词汇学习", `${data.className} · ${data.program === "NCUK 国际预科" ? "全部分组长期开放" : "全部周次与单元长期开放"}，无需等待老师发布考试。`)}<div class="alert">${icon("book")} 选择科目及${groupName}即可学习，支持预习与回顾。内容包含词汇、中文释义和双语场景例句；场景例句为教学材料，并非官方试题。</div>${filters({ program: false, subject: true, subjectOptions: subjects, subjectPlaceholder: "请选择科目", search: true })}<div class="toolbar"><select data-filter="group" aria-label="按分组学习">${option("all", `全部 ${groupName}`, group)}${groups.map((g) => option(g, g, group)).join("")}${available.some((w) => !w.groups.length) ? option("ungrouped", "未分组词汇", group) : ""}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, limit)} 条</span></div><div class="cards-grid">${words
+  return `${heading("词汇学习", `${data.className} · ${data.program === "NCUK 国际预科" ? "全部分组长期开放" : "全部周次与单元长期开放"}，无需等待老师发布考试。`)}<div class="alert">${icon("book")} 选择科目及${groupName}即可学习，支持预习与回顾。内容包含词汇、中文释义和双语场景例句；场景例句为教学材料，并非官方试题。</div>${scopeTrail({ program: data.className, subject: state.filter.subject, student: true })}${filters({ program: false, search: true })}<div class="toolbar"><select data-filter="group" aria-label="按分组学习">${option("all", `全部 ${groupName}`, group)}${groups.map((g) => option(g, g, group)).join("")}${available.some((w) => !w.groups.length) ? option("ungrouped", "未分组词汇", group) : ""}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, limit)} 条</span></div><div class="cards-grid">${words
     .slice(0, limit)
     .map(
       (w) =>
@@ -1401,13 +1558,95 @@ const attemptEndpoint = (a) =>
     ? `/api/practice/${a.attempt.id}`
     : `/api/attempts/${a.attempt.id}`;
 
+function calendarDayKey(time = now()) {
+  return new Date(Number(time) + 8 * 3600000).toISOString().slice(0, 10);
+}
+function calendarTime(time) {
+  return new Date(time).toLocaleTimeString("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+function studentCalendarTasks() {
+  const combined = new Map(state.tasks.map((t) => [t.id, t]));
+  for (const t of examAlertItems)
+    combined.set(t.id, { ...combined.get(t.id), ...t });
+  return [...combined.values()]
+    .filter((t) => {
+      if (!Number.isFinite(t.opensAt)) return false;
+      return (
+        !examCalendarReady ||
+        t.attempt?.submittedAt ||
+        t.closesAt <= now() ||
+        examAlertItems.some((a) => a.id === t.id)
+      );
+    })
+    .sort((a, b) => a.opensAt - b.opensAt);
+}
+function studentCalendar() {
+  const today = calendarDayKey();
+  const month = state.studentCalendarMonth || today.slice(0, 7);
+  const selected = state.studentCalendarDate || today;
+  const [year, m] = month.split("-").map(Number);
+  const offset = (new Date(Date.UTC(year, m - 1, 1)).getUTCDay() + 6) % 7;
+  const count = new Date(Date.UTC(year, m, 0)).getUTCDate();
+  const tasks = studentCalendarTasks();
+  const monthTasks = tasks.filter((t) =>
+    calendarDayKey(t.opensAt).startsWith(month),
+  );
+  const dayTasks = tasks.filter((t) => calendarDayKey(t.opensAt) === selected);
+  const upcoming = tasks.filter(
+    (t) =>
+      !t.attempt?.submittedAt &&
+      t.closesAt > now() &&
+      (calendarDayKey(t.opensAt).startsWith(month) ||
+        (t.opensAt <= now() && month === today.slice(0, 7))),
+  );
+  const list = dayTasks.length ? dayTasks : selected === today ? upcoming : [];
+  const color = classStyle(state.user.classId);
+  return `<section class="panel student-calendar class-tinted" style="${color}" aria-label="我的考试日历"><header class="student-calendar-header"><div><span class="eyebrow">YOUR EXAM CALENDAR</span><h2>${icon("calendar")}考试日历</h2><p>老师安排的考试会自动出现在这里 · 北京时间</p></div><div class="student-calendar-nav"><button class="icon-button" data-action="student-calendar-month" data-delta="-1" aria-label="考试日历上个月">${icon("back")}</button><strong>${year}年${m}月</strong><button class="icon-button" data-action="student-calendar-month" data-delta="1" aria-label="考试日历下个月">${icon("arrow")}</button><button class="btn btn-light btn-sm" data-action="student-calendar-today">今天</button></div></header><div class="student-calendar-layout"><div><div class="student-calendar-grid">${["一", "二", "三", "四", "五", "六", "日"].map((d) => `<span class="student-calendar-weekday">周${d}</span>`).join("")}${Array.from({ length: offset }, () => '<span class="calendar-spacer" aria-hidden="true"></span>').join("")}${Array.from(
+    { length: count },
+    (_, i) => {
+      const key = `${month}-${String(i + 1).padStart(2, "0")}`;
+      const items = monthTasks.filter((t) => calendarDayKey(t.opensAt) === key);
+      return `<button class="student-calendar-day ${key === today ? "is-today" : ""} ${key === selected ? "selected" : ""} ${items.length ? "has-exam" : ""}" data-action="student-calendar-day" data-key="${key}" aria-pressed="${key === selected}" aria-current="${key === today ? "date" : "false"}" aria-label="${key}${key === today ? " 今天" : ""}，${items.length}场考试"><strong>${i + 1}</strong>${items.length ? `<span class="calendar-count">${items.length} 场</span><span class="calendar-exam-name">${icon(subjectIcon(items[0].subject))}${esc(nameSubject(items[0].subject))}</span>` : ""}</button>`;
+    },
+  ).join(
+    "",
+  )}</div><p class="calendar-legend"><i></i>有考试安排 <b></b>今天 · 点击日期查看考试</p></div><aside class="student-calendar-agenda"><header><small>${esc(selected === today && !dayTasks.length ? "接下来的考试" : selected)}</small><h3>${dayTasks.length ? `${dayTasks.length} 场考试安排` : selected === today ? "本月待考安排" : "当天安排"}</h3></header><div class="calendar-agenda-list">${
+    list
+      .map((t) => {
+        const done = !!t.attempt?.submittedAt;
+        const phase = done
+          ? "已完成"
+          : t.closesAt <= now()
+            ? "已截止"
+            : t.opensAt <= now()
+              ? "正在开放"
+              : "即将开始";
+        return `<article class="calendar-exam-item"><div class="calendar-exam-meta"><span>${icon(subjectIcon(t.subject))}${esc(nameSubject(t.subject))}</span><small class="${phase === "正在开放" ? "exam-open" : ""}">${phase}</small></div><h4>${esc(t.title)}</h4><p>${calendarDayKey(t.opensAt).slice(5).replace("-", "月")}日 ${calendarTime(t.opensAt)} 开放<br>截止 ${calendarDayKey(t.closesAt).slice(5).replace("-", "月")}日 ${calendarTime(t.closesAt)}${t.duration ? ` · 限时${t.duration}分钟` : ""}</p>${t.retakeOf ? '<span class="notice-retake">个人补考</span>' : ""}<button class="btn btn-light btn-sm" data-action="${done ? "student-result" : "calendar-exam"}" data-id="${t.id}">${done ? "回看成绩" : t.closesAt <= now() ? "查看考试信息" : t.opensAt <= now() ? "进入考试" : "查看考试安排"}${icon("arrow")}</button></article>`;
+      })
+      .join("") ||
+    '<div class="calendar-no-exam">' +
+      icon("calendar") +
+      "<p>当天没有考试安排</p><small>新考试发布后会自动显示，无需手动添加。</small></div>"
+  }</div></aside></div></section>`;
+}
+function paintStudentCalendar() {
+  const node = $("#student-calendar-root");
+  if (node && state.user?.role === "student")
+    node.innerHTML = studentCalendar();
+}
+
 function studentDashboard() {
   const pending = state.tasks.filter(
       (t) => !t.attempt?.submittedAt && t.closesAt > now(),
     ),
     done = state.tasks.filter((t) => t.attempt?.submittedAt),
     due = state.mistakes.filter((m) => !m.resolved && m.nextReview <= now());
-  return `${heading("我的学习", "每天一点积累，让专业课里的每一句话都更清晰。", `<button class="btn btn-primary" data-action="nav" data-view="practice">${icon("clipboard")}自主模拟 · 随时练习</button><button class="btn btn-light" data-action="nav" data-view="learning">${icon("book")}词汇学习</button><button class="btn btn-light" data-action="alerts-open">${icon("bell")}查看考试提醒</button>`)}<section class="student-welcome"><h2>${esc(state.user.name)}，今天也要有所收获。</h2><p>${esc(state.user.className)}<br>老师已为你安排好学习内容，准备好就开始吧。</p>${art()}</section><div class="stats-grid">${stat("待完成测试", pending.length, "份", "clipboard", "记得在截止时间前提交")}${stat("已完成测试", done.length, "份", "check", "每一次努力都有记录", "blue")}${stat("听写平均分", mean(done.map((t) => ({ score: t.attempt.score }))), "分", "chart", "持续练习，慢慢进步", "gold")}${stat("今天待复习", due.length, "个", "repeat", `共 ${state.mistakes.filter((m) => !m.resolved).length} 个未掌握错词`, "purple")}</div><div class="panel-header" style="padding:0 0 18px"><h2>接下来，完成这些练习</h2><button class="section-link" data-action="nav" data-view="tasks">全部测试 ${icon("arrow")}</button></div><div class="cards-grid">${pending.slice(0, 3).map(studentTaskCard).join("")}</div>${!pending.length ? empty("今天的待办已清空", "可以去错题本复习，或者回看之前的成绩。", `<button class="btn btn-primary" data-action="nav" data-view="review">${icon("repeat")}复习错题</button>`) : ""}`;
+  return `${heading("我的学习", "每天一点积累，让专业课里的每一句话都更清晰。", `<button class="btn btn-primary" data-action="nav" data-view="practice">${icon("clipboard")}自主模拟 · 随时练习</button><button class="btn btn-light" data-action="nav" data-view="learning">${icon("book")}词汇学习</button><button class="btn btn-light" data-action="alerts-open">${icon("bell")}查看考试提醒</button>`)}<section class="student-welcome class-tinted" style="${classStyle(state.user.classId)}"><h2>${esc(state.user.name)}，今天也要有所收获。</h2><p>${esc(state.user.className)}<br>老师已为你安排好学习内容，准备好就开始吧。</p>${art()}</section><div id="student-calendar-root">${studentCalendar()}</div><div class="stats-grid">${stat("待完成测试", pending.length, "份", "clipboard", "记得在截止时间前提交")}${stat("已完成测试", done.length, "份", "check", "每一次努力都有记录", "blue")}${stat("听写平均分", mean(done.map((t) => ({ score: t.attempt.score }))), "分", "chart", "持续练习，慢慢进步", "gold")}${stat("今天待复习", due.length, "个", "repeat", `共 ${state.mistakes.filter((m) => !m.resolved).length} 个未掌握错词`, "purple")}</div><div class="panel-header" style="padding:0 0 18px"><h2>接下来，完成这些练习</h2><button class="section-link" data-action="nav" data-view="tasks">全部测试 ${icon("arrow")}</button></div><div class="cards-grid">${pending.slice(0, 3).map(studentTaskCard).join("")}</div>${!pending.length ? empty("今天的待办已清空", "可以去错题本复习，或者回看之前的成绩。", `<button class="btn btn-primary" data-action="nav" data-view="review">${icon("repeat")}复习错题</button>`) : ""}`;
 }
 function studentTasks(history = false) {
   const tasks = state.tasks.filter((t) =>
@@ -1764,7 +2003,9 @@ function taskFilters() {
   if (!form) return;
   const cls = state.classes.find((c) => c.id === form.elements.classId.value);
   const subjectSelect = form.elements.subject,
-    previous = subjectSelect.value;
+    previous =
+      subjectSelect.value ||
+      (state.filter.subject !== "all" ? state.filter.subject : "");
   const courses = cls?.courses || [];
   subjectSelect.innerHTML =
     option("", cls ? "请选择该班科目" : "请先选择班级", "") +
@@ -2197,6 +2438,89 @@ document.addEventListener("click", async (e) => {
   if (!b) return;
   const action = b.dataset.action;
   try {
+    if (action === "choose-option") {
+      const select = document.getElementById(b.dataset.select);
+      if (!select || select.disabled) return;
+      select.value = b.dataset.key;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      enhanceChoiceControls();
+      return;
+    }
+    if (action === "library-back" || action === "learning-back") {
+      if (state.filter.subject !== "all") state.filter.subject = "all";
+      else if (action === "library-back") state.filter.program = "all";
+      state.filter.group = "all";
+      state.filter.search = "";
+      render();
+      return;
+    }
+    if (action === "tasks-class") {
+      state.filter.classId = b.dataset.id;
+      state.filter.subject = "all";
+      state.filter.search = "";
+      render();
+      return;
+    }
+    if (action === "tasks-subject") {
+      state.filter.subject = b.dataset.key;
+      state.filter.search = "";
+      render();
+      return;
+    }
+    if (action === "tasks-back") {
+      if (state.filter.subject !== "all") state.filter.subject = "all";
+      else state.filter.classId = "all";
+      state.filter.search = "";
+      render();
+      return;
+    }
+    if (action === "class-course-detail") {
+      const cls = state.classes.find((c) => c.id === b.dataset.id);
+      const course = cls?.courses?.find((c) => c.subject === b.dataset.key);
+      if (course)
+        modal(
+          course.title || nameSubject(course.subject),
+          cls.name,
+          `<div class="course-detail-symbol">${icon(subjectIcon(course.subject))}</div><p class="course-content">${esc(course.content || "尚未填写课程内容，可在管理课程中补充。")}</p>`,
+          `<button class="btn btn-light" data-action="close-modal">关闭</button><button class="btn btn-primary" data-action="edit-class-courses" data-id="${cls.id}">编辑班级课程</button>`,
+        );
+      return;
+    }
+    if (action.startsWith("student-calendar-")) {
+      const today = calendarDayKey();
+      if (action === "student-calendar-month") {
+        const [year, month] = (state.studentCalendarMonth || today.slice(0, 7))
+          .split("-")
+          .map(Number);
+        const next = new Date(
+          Date.UTC(year, month - 1 + Number(b.dataset.delta), 1),
+        );
+        state.studentCalendarMonth = next.toISOString().slice(0, 7);
+        state.studentCalendarDate =
+          state.studentCalendarMonth === today.slice(0, 7)
+            ? today
+            : state.studentCalendarMonth + "-01";
+      }
+      if (action === "student-calendar-today") {
+        state.studentCalendarMonth = today.slice(0, 7);
+        state.studentCalendarDate = today;
+      }
+      if (action === "student-calendar-day")
+        state.studentCalendarDate = b.dataset.key;
+      paintStudentCalendar();
+      return;
+    }
+    if (action === "calendar-exam") {
+      await load();
+      state.requestedExamId = b.dataset.id;
+      state.view = "exam-entry";
+      state.examResult = null;
+      sessionStorage.setItem("lexiclass-exam", b.dataset.id);
+      closeExamAlerts();
+      render();
+      window.scrollTo(0, 0);
+      return;
+    }
     if (action === "alerts-open") {
       if (state.attempt && !state.attempt.task.practice) {
         toast("请先完成当前考试，交卷后可查看其他考试安排。");
@@ -2266,6 +2590,13 @@ document.addEventListener("click", async (e) => {
       if (action === "report-student") {
         openStudentReport(key);
         return;
+      }
+      if (action === "report-back") {
+        if (r.subject || r.studentId)
+          state.report = { ...newReport(), classId: r.classId };
+        else state.report = newReport();
+        state.resultTaskId = null;
+        state.filter.program = "all";
       }
       if (action === "report-root") {
         state.report = newReport();
@@ -2543,7 +2874,7 @@ document.addEventListener("click", async (e) => {
     if (action === "edit-class-courses")
       return classCourses(b.dataset.id, true);
     if (action === "class-detail") {
-      state.view = "students";
+      state.view = "classes";
       state.filter = {
         program: "all",
         classId: b.dataset.id,
@@ -2996,7 +3327,7 @@ document.addEventListener("submit", async (e) => {
         students: names.map((name) => ({ name, classId: data.classId })),
       });
       await load();
-      state.view = "students";
+      state.view = "classes";
       render();
       invitesModal(r.students);
     }
@@ -3191,7 +3522,10 @@ document.addEventListener("change", (e) => {
       a.classId = "all";
       a.group = "all";
     }
-    if (key === "classId") a.group = "all";
+    if (key === "classId") {
+      a.group = "all";
+      a.subject = "all";
+    }
     $("#main-view").innerHTML = content();
     return;
   }
@@ -3248,7 +3582,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Tab" && modalOpen) {
     const nodes = $$(
       "#modal-root button:not(:disabled),#modal-root input:not(:disabled),#modal-root select,#modal-root textarea,#modal-root a",
-    );
+    ).filter((n) => n.tabIndex >= 0 && n.getClientRects().length);
     if (!nodes.length) return;
     const first = nodes[0],
       last = nodes[nodes.length - 1];

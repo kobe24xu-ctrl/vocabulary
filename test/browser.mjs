@@ -75,7 +75,11 @@ try {
     .selectOption("NCUK 国际预科");
   await page.getByRole("button", { name: "创建班级", exact: true }).click();
   await page.getByRole("heading", { name: "NCUK 测试班" }).waitFor();
-  await page.locator(".nav [data-view=students]").click();
+  await page.locator(".nav [data-view=classes]").click();
+  await page
+    .locator("[data-action=roster-class]")
+    .filter({ hasText: "UNSW 商科 A 班" })
+    .click();
   await page.getByRole("button", { name: "添加学生", exact: true }).click();
   await page
     .locator("#students-form [name=classId]")
@@ -117,7 +121,6 @@ try {
   await page.getByRole("button", { name: "已妥善保存" }).click();
   await page.reload();
   await page.locator(".nav [data-view=tasks]").click();
-  await page.getByRole("button", { name: "全部展开", exact: true }).click();
   // This class has an explicit course list, as in the master-managed site.
   assert.equal(
     await page.evaluate(async () => {
@@ -183,8 +186,11 @@ try {
   await page.getByRole("button", { name: "完成", exact: true }).click();
   await page.reload();
   await page.locator(".nav [data-view=tasks]").click();
-  await page.getByRole("button", { name: "全部展开", exact: true }).click();
-  await page.getByRole("button", { name: "全部展开", exact: true }).click();
+  await page
+    .locator("[data-action=tasks-class]")
+    .filter({ hasText: "UNSW 商科 A 班" })
+    .click();
+  await page.locator("[data-action=tasks-subject][data-key=Economics]").click();
   assert.equal(
     await page
       .locator(".task-table-row")

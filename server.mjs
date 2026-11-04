@@ -202,6 +202,12 @@ const mime = {
   ".webmanifest": "application/manifest+json",
 };
 function userInfo(u, session) {
+  const cls = u.class_id
+    ? one(
+        "SELECT name,(SELECT COUNT(*) FROM classes peer WHERE peer.owner_id=c.owner_id AND peer.id<c.id) AS color_index FROM classes c WHERE c.id=?",
+        u.class_id,
+      )
+    : null;
   return {
     id: u.id,
     role: u.role,
@@ -211,12 +217,10 @@ function userInfo(u, session) {
           ? "演示 Master"
           : MASTER_NAME
         : u.name,
-    className:
-      u.role === "teacher"
-        ? u.class_name
-        : one("SELECT name FROM classes WHERE id=?", u.class_id)?.name,
+    className: u.role === "teacher" ? u.class_name : cls?.name,
     program: u.program,
     classId: u.class_id,
+    classColorIndex: cls?.color_index ?? 0,
     username: u.role === "teacher" ? MASTER_ACCOUNT : u.username,
     initialPassword: u.role === "student" && !!u.initial_password,
     isDemo: !!session?.demo_owner_id,

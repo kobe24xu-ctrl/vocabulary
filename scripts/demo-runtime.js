@@ -41,6 +41,13 @@
     role: u.role,
     username: u.role === "teacher" ? "master" : u.username,
     classId: u.classId,
+    classColorIndex: Math.max(
+      0,
+      db.classes
+        .map((c) => c.id)
+        .sort()
+        .indexOf(u.classId),
+    ),
     className:
       u.role === "teacher"
         ? "国际预科教学中心"
