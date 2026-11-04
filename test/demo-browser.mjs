@@ -93,15 +93,13 @@ try {
     .locator("input")
     .check();
   assert.deepEqual(
-    await page
-      .locator("#task-form")
-      .evaluate((f) =>
-        [...f.querySelectorAll(":invalid")].map((n) => ({
-          name: n.name,
-          value: n.value,
-          message: n.validationMessage,
-        })),
-      ),
+    await page.locator("#task-form").evaluate((f) =>
+      [...f.querySelectorAll(":invalid")].map((n) => ({
+        name: n.name,
+        value: n.value,
+        message: n.validationMessage,
+      })),
+    ),
     [],
   );
   await page.getByRole("button", { name: "确认发布", exact: true }).click();
@@ -164,7 +162,9 @@ try {
   await page.getByRole("button", { name: "全部展开", exact: true }).click();
   await page.locator(`[data-action=task-results][data-id="${taskId}"]`).click();
   await page.getByRole("heading", { name: "成绩分析", exact: true }).waitFor();
-  const row = page.locator("tbody tr").filter({ hasText: "陈思远" });
+  const row = page
+    .locator(".report-student-card")
+    .filter({ hasText: "陈思远" });
   assert.match(await row.textContent(), /88/);
   assert.match(await row.textContent(), /UNSW 商科 A 班/);
   assert.deepEqual(errors, []);

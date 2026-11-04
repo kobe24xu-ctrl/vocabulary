@@ -1,3 +1,7 @@
+import {
+  createExamService,
+  examEventStream,
+} from "./lib/exam-notifications.mjs";
 import { createPracticeService } from "./lib/practice.mjs";
 import { automaticTaskTitle } from "./public/scheduling.js";
 import {
@@ -115,6 +119,27 @@ db.exec(
     "utf8",
   ),
 );
+db.exec(
+  readFileSync(
+    join(ROOT, "cloudflare/migrations/0007_exam_retakes.sql"),
+    "utf8",
+  ),
+);
+const examService = createExamService({
+  one,
+  all,
+  mutate: async (operations) => {
+    db.exec("BEGIN");
+    try {
+      const result = operations.map((op) => run(op.sql, ...op.params));
+      db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  },
+});
 const practiceService = createPracticeService({
   one,
   all,
@@ -498,6 +523,7 @@ function taskView(t) {
       ? qs[0].direction
       : "mixed",
     createdAt: t.created_at,
+    retakeOf: t.retake_of || null,
   };
 }
 function attemptView(a) {
@@ -953,6 +979,24 @@ async function api(req, res, url) {
     run("DELETE FROM sessions WHERE token_hash=?", session.token_hash);
     return { user: newSession(req, res, target, session.demo_owner_id) };
   }
+  if (path === "/api/student/alerts" && method === "GET")
+    return examService.alerts(u, session.token_hash);
+  if (path === "/api/student/events" && method === "GET") {
+    if (u.role !== "student") fail(403, "请使用学生账号。");
+    const abort = new AbortController();
+    res.once("close", () => abort.abort());
+    return examEventStream(
+      () => examService.alerts(u, session.token_hash),
+      abort.signal,
+    );
+  }
+  const retakeRoute = path.match(/^\/api\/tasks\/([^/]+)\/retakes$/);
+  if (retakeRoute && method === "POST")
+    return {
+      task: taskView(
+        await examService.retake(u, retakeRoute[1], await body(req)),
+      ),
+    };
   if (path.startsWith("/api/practice"))
     return practiceService(
       u,
@@ -1139,7 +1183,7 @@ async function api(req, res, url) {
   }
   if (path === "/api/tasks" && method === "GET") {
     const tasks = all(
-      "SELECT * FROM tasks WHERE owner_id=? ORDER BY created_at DESC",
+      "SELECT t.*,tr.original_task_id AS retake_of FROM tasks t LEFT JOIN task_retakes tr ON tr.task_id=t.id WHERE t.owner_id=? ORDER BY t.created_at DESC",
       u.role === "teacher" ? u.id : u.owner_id,
     )
       .filter((t) => u.role === "teacher" || canTake(t, u))
@@ -1362,6 +1406,17 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) {
       res.setHeader("Cache-Control", "no-store");
       const result = await api(req, res, url);
+      if (result instanceof Response) {
+        for (const [key, value] of result.headers) res.setHeader(key, value);
+        res.writeHead(result.status);
+        for await (const chunk of result.body) {
+          if (res.destroyed) break;
+          res.write(chunk);
+        }
+        res.end();
+        return;
+      }
+
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(jsonString(result));
       return;

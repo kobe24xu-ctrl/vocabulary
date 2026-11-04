@@ -298,7 +298,9 @@ try {
   await deniedContext.close();
   await page.locator(`[data-action=task-results][data-id="${taskId}"]`).click();
   await page.getByRole("heading", { name: "成绩分析", exact: true }).waitFor();
-  const gradeRow = page.locator("tbody tr").filter({ hasText: "浏览器学生甲" });
+  const gradeRow = page
+    .locator(".report-student-card")
+    .filter({ hasText: "浏览器学生甲" });
   assert.match(await gradeRow.textContent(), /88/);
   assert.match(await gradeRow.textContent(), /UNSW 商科 A 班/);
   await page.getByRole("button", { name: "体验学生端 →" }).click();

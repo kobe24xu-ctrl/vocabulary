@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(join(root, path), "utf8");
 let app = read("public/app.js")
+  .replace(/^import[^;]*from "\.\/reporting\.js";\n/m, "")
+  .replace(/^import[^;]*from "\.\/charts\.js";\n/m, "")
   .replace(/^import[^;]*from "\.\/analytics\.js";\n/m, "")
   .replace(/^import[\s\S]*?from "\.\/scheduling\.js";\n/m, "")
   .replace(/^import .*speech\.js.*;\n/m, "")
@@ -36,10 +38,20 @@ app = app
 const scheduling = read("public/scheduling.js")
   .replaceAll("export const ", "const ")
   .replaceAll("export function ", "function ");
+const reportSource = ["public/reporting.js", "public/charts.js"]
+  .map((name) =>
+    read(name)
+      .replace(/^import[\s\S]*?;\n/gm, "")
+      .replaceAll("export const ", "const ")
+      .replaceAll("export function ", "function "),
+  )
+  .join("\n");
 const shared =
   read("public/analytics.js")
     .replaceAll("export const ", "const ")
     .replaceAll("export function ", "function ") +
+  "\n" +
+  reportSource +
   "\n" +
   scheduling +
   "\n" +

@@ -593,6 +593,82 @@
       return { user: info(u) };
     }
     const u = requireUser();
+    if (path === "/api/student/alerts") {
+      requireUser("student");
+      const time = Date.now();
+      return {
+        exams: db.tasks
+          .filter(
+            (t) =>
+              allowed(t, u) &&
+              t.closesAt > time &&
+              !attemptFor(t.id, u.id)?.submittedAt,
+          )
+          .sort((a, b) => a.opensAt - b.opensAt)
+          .slice(0, 50)
+          .map((t) => ({
+            id: t.id,
+            title: t.title,
+            program: t.program,
+            subject: t.subject,
+            opensAt: t.opensAt,
+            closesAt: t.closesAt,
+            createdAt: t.createdAt,
+            retakeOf: t.retakeOf || null,
+            phase: t.opensAt <= time ? "open" : "scheduled",
+          })),
+        serverTime: time,
+      };
+    }
+    const retake = path.match(/^\/api\/tasks\/([^/]+)\/retakes$/);
+    if (retake && method === "POST") {
+      requireUser("teacher");
+      const source = db.tasks.find((t) => t.id === retake[1]);
+      if (!source || source.closesAt > Date.now())
+        reject("请从已关闭的考试安排补考。");
+      const students = db.users.filter(
+        (s) => s.role === "student" && allowed(source, s),
+      );
+      if (
+        !Array.isArray(body.studentIds) ||
+        !body.studentIds.length ||
+        body.studentIds.some((id) => !students.some((s) => s.id === id))
+      )
+        reject("请选择原考试名单中的学生。");
+      const opens = Date.parse(body.opensAt),
+        closes = Date.parse(body.closesAt),
+        duration = Number(body.duration);
+      if (
+        !Number.isFinite(opens) ||
+        !Number.isFinite(closes) ||
+        closes <= Math.max(Date.now(), opens) ||
+        !Number.isInteger(duration) ||
+        duration < 1 ||
+        duration > 180
+      )
+        reject("补考时间设置不正确。");
+      const task = {
+        ...copy(source),
+        id: uid(),
+        title: source.title.replace(/ · 补考.*$/, "").slice(0, 98) + " · 补考",
+        retakeOf: source.id,
+        opensAt: opens,
+        closesAt: closes,
+        duration,
+        createdAt: Date.now(),
+        audience: [...new Set(body.studentIds)],
+        classIds: [
+          ...new Set(
+            students
+              .filter((s) => body.studentIds.includes(s.id))
+              .map((s) => s.classId),
+          ),
+        ],
+      };
+      db.tasks.unshift(task);
+      return { task: taskView(task) };
+    }
+
     if (path.startsWith("/api/practice"))
       return demoPracticeRoute(u, path, method, body);
     if (path === "/api/me") return { user: info(u), serverTime: Date.now() };

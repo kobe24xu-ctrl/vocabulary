@@ -1,3 +1,7 @@
+import {
+  createExamService,
+  examEventStream,
+} from "../lib/exam-notifications.mjs";
 import { createPracticeService } from "../lib/practice.mjs";
 import { automaticTaskTitle } from "../public/scheduling.js";
 import { markWithAI } from "../lib/semantic-grading.mjs";
@@ -111,6 +115,7 @@ function taskView(t) {
       ? qs[0].direction
       : "mixed",
     createdAt: t.created_at,
+    retakeOf: t.retake_of || null,
   };
 }
 function attemptView(a) {
@@ -161,6 +166,12 @@ function service(env, request, headers = new Headers(SECURITY)) {
     );
   const batch = (statements) =>
     statements.length ? env.DB.batch(statements) : Promise.resolve([]);
+  const examService = createExamService({
+    one,
+    all,
+    mutate: (operations) =>
+      batch(operations.map((op) => statement(op.sql, ...op.params))),
+  });
   const practiceService = createPracticeService({
     one,
     all,
@@ -1071,6 +1082,22 @@ function service(env, request, headers = new Headers(SECURITY)) {
       await run("DELETE FROM sessions WHERE token_hash=?", session.token_hash);
       return { user: await newSession(target, session.demo_owner_id) };
     }
+    if (path === "/api/student/alerts" && method === "GET")
+      return examService.alerts(u, session.token_hash);
+    if (path === "/api/student/events" && method === "GET") {
+      student(u);
+      return examEventStream(
+        () => examService.alerts(u, session.token_hash),
+        request.signal,
+      );
+    }
+    const retakeRoute = path.match(/^\/api\/tasks\/([^/]+)\/retakes$/);
+    if (retakeRoute && method === "POST")
+      return {
+        task: taskView(
+          await examService.retake(u, retakeRoute[1], await body()),
+        ),
+      };
     if (path.startsWith("/api/practice"))
       return practiceService(
         u,
@@ -1261,7 +1288,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
     if (path === "/api/tasks" && method === "GET") {
       await sweep(u);
       const rows = await all(
-        "SELECT * FROM tasks WHERE owner_id=? ORDER BY created_at DESC",
+        "SELECT t.*,tr.original_task_id AS retake_of FROM tasks t LEFT JOIN task_retakes tr ON tr.task_id=t.id WHERE t.owner_id=? ORDER BY t.created_at DESC",
         u.role === "teacher" ? u.id : u.owner_id,
       );
       const tasks = [];
@@ -1516,10 +1543,17 @@ export default {
       return env.ASSETS.fetch(request);
     const headers = new Headers(SECURITY);
     try {
-      return new Response(
-        jsonString(await service(env, request, headers).api()),
-        { headers },
-      );
+      const result = await service(env, request, headers).api();
+      if (result instanceof Response) {
+        const responseHeaders = new Headers(headers);
+        for (const [key, value] of result.headers)
+          responseHeaders.set(key, value);
+        return new Response(result.body, {
+          status: result.status,
+          headers: responseHeaders,
+        });
+      }
+      return new Response(jsonString(result), { headers });
     } catch (e) {
       // Never log SQL arguments, request bodies, cookies or credentials.
       let status = e.status || 500;

@@ -1,4 +1,19 @@
 import {
+  assessmentRows,
+  gradeMetrics,
+  assessmentGroups,
+  learningGroups,
+  courseGroups,
+  studentGroups,
+  scoreBins,
+  inScoreBin,
+  completedGrade,
+  learningLabel,
+  reportDay,
+  REPORT_COLORS,
+} from "./reporting.js";
+import { linePlot, barPlot, donutPlot, miniPlot } from "./charts.js";
+import {
   enrichGradeRows,
   gradeAverage,
   summarizeGrades,
@@ -74,6 +89,65 @@ const subjectIcon = (s) =>
         : s === "Computer Science"
           ? "grid"
           : "leaf";
+let uiFontSize = 18;
+try {
+  const stored = Number(localStorage.getItem("classwords-ui-font-size"));
+  if (Number.isFinite(stored) && stored >= 16 && stored <= 26)
+    uiFontSize = stored;
+} catch {}
+document.documentElement.style.setProperty("--ui-font-size", `${uiFontSize}px`);
+function fontControls() {
+  return `<div class="font-size-control" role="group" aria-label="调节界面字号"><button type="button" data-action="font-size" data-step="-2" title="减小字号" aria-label="减小字号" ${uiFontSize <= 16 ? "disabled" : ""}>A−</button><span class="font-size-value" aria-live="polite">${uiFontSize}</span><button type="button" data-action="font-size" data-step="2" title="增大字号" aria-label="增大字号" ${uiFontSize >= 26 ? "disabled" : ""}>A＋</button><button type="button" data-action="font-size" data-reset="true" title="还原默认18号字体" aria-label="还原默认字号">↺</button></div>`;
+}
+function changeFontSize(button) {
+  uiFontSize = button.dataset.reset
+    ? 18
+    : Math.min(26, Math.max(16, uiFontSize + Number(button.dataset.step)));
+  document.documentElement.style.setProperty(
+    "--ui-font-size",
+    `${uiFontSize}px`,
+  );
+  try {
+    localStorage.setItem("classwords-ui-font-size", String(uiFontSize));
+  } catch {}
+  $$(".font-size-control").forEach((node) => {
+    node.outerHTML = fontControls();
+  });
+}
+function retakeForm(taskId, studentId = "") {
+  const task = state.tasks.find((t) => t.id === taskId);
+  if (!task || task.closesAt > now()) {
+    toast("请在原考试关闭后安排补考。", true);
+    return;
+  }
+  const students = state.students.filter(
+    (s) =>
+      task.classIds.includes(s.classId) &&
+      (task.audience === "all" || task.audience.includes(s.id)),
+  );
+  modal(
+    "安排个人补考",
+    task.title,
+    `<p class="retake-explainer">补考沿用这次考试的词汇、题目与判分标准，原成绩保留。只有勾选的学生会收到新的考试提醒。</p><form id="retake-form"><input type="hidden" name="taskId" value="${task.id}"><div class="form-grid"><label class="form-field"><span>开放时间（北京时间）</span><input name="opensAt" type="datetime-local" value="${beijingInput()}" required></label><label class="form-field"><span>截止时间（北京时间）</span><input name="closesAt" type="datetime-local" value="${beijingInput(Date.now() + 86400000)}" required></label><label class="form-field full"><span>答题时长（分钟）</span><input name="duration" type="number" min="1" max="180" value="${task.duration}" required></label></div><div class="form-section">选择补考学生</div><div class="retake-students">${state.classes
+      .filter((c) => task.classIds.includes(c.id))
+      .map(
+        (c) =>
+          `<fieldset><legend>${esc(c.name)}</legend>${students
+            .filter((s) => s.classId === c.id)
+            .map((s) => {
+              const old = state.results.find(
+                (r) => r.taskId === task.id && r.studentId === s.id,
+              );
+              return `<label class="check-item"><input type="checkbox" name="studentIds" value="${s.id}" ${studentId === s.id ? "checked" : ""}><span><strong>${esc(s.name)}</strong><small>${old?.score !== null && Number.isFinite(old?.score) ? `原成绩 ${old.score}分` : "原考试未交卷"}</small></span></label>`;
+            })
+            .join("")}</fieldset>`,
+      )
+      .join("")}</div></form>`,
+    `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="retake-form">安排补考并通知</button>`,
+    true,
+  );
+}
+
 const state = {
   user: null,
   config: null,
@@ -86,6 +160,7 @@ const state = {
     classId: "all",
     band: "all",
   },
+  report: newReport(),
   taskFolders: {},
   scheduleDates: new Set(),
   scheduleOverrides: {},
@@ -246,6 +321,186 @@ function navItems() {
         ],
       ];
 }
+let examEventSource = null,
+  examFallbackTimer = null,
+  examNotificationUser = null,
+  lastExamPulse = 0;
+let examAlertItems = [],
+  examPanelOpen = false;
+let examAnnounced = new Set(),
+  examAcknowledged = new Set(),
+  examCompletedHere = new Set();
+function alertPhaseKey(t) {
+  return `${t.id}:${t.phase}`;
+}
+function noticeRoot() {
+  let node = $("#exam-notice-root");
+  if (!node) {
+    node = document.createElement("div");
+    node.id = "exam-notice-root";
+    document.body.appendChild(node);
+  }
+  return node;
+}
+function visibleExamAlerts() {
+  return examAlertItems.filter(
+    (t) =>
+      !examCompletedHere.has(t.id) &&
+      t.closesAt > now() &&
+      !(
+        state.attempt &&
+        !state.attempt.task.practice &&
+        state.attempt.task.id === t.id
+      ),
+  );
+}
+function paintExamAlerts() {
+  const root = noticeRoot(),
+    items = visibleExamAlerts(),
+    attention = items.filter(
+      (t) => t.phase === "open" || !examAcknowledged.has(alertPhaseKey(t)),
+    );
+  const area = $("#exam-alert-area");
+  if (area)
+    area.innerHTML = `<button class="exam-alert-button ${attention.length ? "urgent" : ""}" data-action="alerts-open" aria-label="${attention.length}场待参加考试" title="查看老师发布的考试">${icon("bell")}<span>${attention.length ? `待考 ${attention.length}` : "考试提醒"}</span>${attention.length ? "<i></i>" : ""}</button>`;
+  if (!items.length) examPanelOpen = false;
+  root.innerHTML =
+    examPanelOpen && !(state.attempt && !state.attempt.task.practice)
+      ? `<section class="exam-notice" role="region" aria-label="待参加考试提醒"><header><div><span>老师的考试安排</span><h2>${items.some((t) => t.phase === "open") ? "你有考试可以参加" : "收到新的考试安排"}</h2></div><button class="icon-button" data-action="alerts-close" aria-label="关闭考试提醒">${icon("close")}</button></header><div class="exam-notice-items">${items
+          .slice(0, 3)
+          .map(
+            (t) =>
+              `<article><div>${t.retakeOf ? '<strong class="notice-retake">个人补考</strong>' : ""}<span>${t.phase === "open" ? "已开放 · 请及时参加" : "预约考试"}</span></div><h3>${esc(t.title)}</h3><p>${t.phase === "open" ? "截止" : "开放"}：${date(t.phase === "open" ? t.closesAt : t.opensAt, true)}</p><button class="btn btn-primary" data-action="alert-exam" data-id="${t.id}">${t.phase === "open" ? "进入考试" : "查看考试安排"} ${icon("arrow")}</button></article>`,
+          )
+          .join(
+            "",
+          )}</div><footer><button data-action="alerts-all">${items.length > 3 ? `还有 ${items.length - 3} 场 · ` : ""}查看全部考试</button><small>点击进入后，确认开始才计时。</small></footer></section>`
+      : "";
+}
+function closeExamAlerts() {
+  visibleExamAlerts()
+    .filter((t) => t.phase !== "open")
+    .forEach((t) => examAcknowledged.add(alertPhaseKey(t)));
+  examPanelOpen = false;
+  paintExamAlerts();
+}
+function receiveExamAlerts(snapshot, userId) {
+  if (state.user?.id !== userId || state.user.role !== "student") return;
+  lastExamPulse = Date.now();
+  if (Number.isFinite(snapshot.serverTime))
+    state.serverOffset = snapshot.serverTime - Date.now();
+  examAlertItems = Array.isArray(snapshot.exams) ? snapshot.exams : [];
+  const unseen = visibleExamAlerts().filter(
+    (t) => !examAnnounced.has(alertPhaseKey(t)),
+  );
+  if (unseen.length && !(state.attempt && !state.attempt.task.practice)) {
+    unseen.forEach((t) => examAnnounced.add(alertPhaseKey(t)));
+    examPanelOpen = true;
+  }
+  paintExamAlerts();
+}
+function stopExamAlerts() {
+  examEventSource?.close();
+  examEventSource = null;
+  clearInterval(examFallbackTimer);
+  examFallbackTimer = null;
+  lastExamPulse = 0;
+}
+function syncExamAlerts() {
+  if (state.user?.role !== "student") {
+    stopExamAlerts();
+    examNotificationUser = null;
+    examPanelOpen = false;
+    examAlertItems = [];
+    const root = $("#exam-notice-root");
+    if (root) root.innerHTML = "";
+    return;
+  }
+  const userId = state.user.id;
+  if (examNotificationUser !== userId) {
+    stopExamAlerts();
+    examNotificationUser = userId;
+    examAnnounced = new Set();
+    examAcknowledged = new Set();
+    examCompletedHere = new Set();
+    examAlertItems = [];
+  }
+  if (document.hidden) {
+    stopExamAlerts();
+    return;
+  }
+  paintExamAlerts();
+  if (examFallbackTimer) return;
+  const poll = () =>
+    api("/api/student/alerts")
+      .then((data) => receiveExamAlerts(data, userId))
+      .catch(() => {});
+  poll();
+  if ("EventSource" in window && !state.user.isDemo) {
+    examEventSource = new EventSource("/api/student/events");
+    examEventSource.addEventListener("exams", (event) => {
+      try {
+        receiveExamAlerts(JSON.parse(event.data), userId);
+      } catch {}
+    });
+    examEventSource.addEventListener("pulse", () => {
+      lastExamPulse = Date.now();
+    });
+    examEventSource.addEventListener("retry-needed", () => {
+      lastExamPulse = 0;
+      poll();
+    });
+    examEventSource.onopen = () => {
+      lastExamPulse = Date.now();
+    };
+    examEventSource.onerror = () => {
+      lastExamPulse = 0;
+    };
+  }
+  examFallbackTimer = setInterval(
+    () => {
+      if (!examEventSource || Date.now() - lastExamPulse > 12000) poll();
+    },
+    state.user.isDemo ? 5000 : 8000,
+  );
+}
+async function enterAlertExam(id) {
+  if (state.attempt && !state.attempt.task.practice) {
+    if (state.attempt.task.id !== id)
+      toast("请先完成当前考试，再参加另一场考试。");
+    closeExamAlerts();
+    return;
+  }
+  if (state.attempt?.task.practice) {
+    readAnswers();
+    await queueSave();
+    state.attempt = null;
+    submitting = false;
+    clearTimeout(saveTimer);
+    sessionStorage.removeItem("lexiclass-practice");
+  }
+  await load();
+  const task = state.tasks.find((t) => t.id === id);
+  if (!task) {
+    toast("这场考试已结束或不再分配给你。", true);
+    closeExamAlerts();
+    return;
+  }
+  state.examResult = null;
+  state.requestedExamId = id;
+  sessionStorage.setItem("lexiclass-exam", id);
+  state.view = "exam-entry";
+  examPanelOpen = false;
+  closeModal();
+  render();
+  window.scrollTo(0, 0);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopExamAlerts();
+  else syncExamAlerts();
+});
+window.addEventListener("pagehide", stopExamAlerts);
+
 function shell() {
   const teacher = state.user.role === "teacher";
   const label =
@@ -258,7 +513,7 @@ function shell() {
     )
     .join(
       "",
-    )}</nav><div class="sidebar-spacer"></div><div class="side-footer"><div class="avatar">${esc(state.user.name.slice(0, 1))}</div><div><strong>${esc(state.user.name)}</strong><small>${teacher ? "Master 管理台" : "学生学习空间"}</small></div><button data-action="logout" title="退出登录" aria-label="退出登录">${icon("logout")}</button></div></aside><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="menu" aria-label="展开导航">${icon("menu")}</button><span>${teacher ? "Master 管理台" : "词间课堂"}</span>${icon("chevron")}<strong>${label}</strong></div><div class="top-actions"><span class="today-label">${new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</span><span class="divider"></span>${teacher ? `<button class="btn btn-light btn-sm" data-action="install">${icon("download")}教师桌面快捷方式</button>` : '<span class="badge gray">网页学习</span>'}<button class="icon-button" data-action="help" title="使用帮助" aria-label="使用帮助">${icon("help")}</button><span class="avatar">${esc(state.user.name.slice(0, 1))}</span></div></header>${state.user.isDemo ? `<div class="demo-banner">演示空间 · 所有姓名与成绩均为示例，和正式班级隔离。${teacher ? '<button data-action="demo-pick">体验学生端 →</button>' : '<button data-action="demo-teacher">返回教师端 →</button>'}</div>` : ""}${state.user.role === "student" && state.user.initialPassword ? '<div class="demo-banner">账号已由老师开通，你可以设置自己的登录密码。<button data-action="nav" data-view="account">修改密码 →</button></div>' : ""}<div id="connection-status">${!navigator.onLine ? '<div class="connection-banner">当前离线。测试和提交需要联网，请保持应用打开并恢复连接。</div>' : ""}</div><main class="main ${teacher ? "" : "student-main"}" id="main-view">${content()}</main><footer class="main page-footer"><span>LexiClass 词间课堂 · 让词汇在语境中生长</span><span>${teacher ? "UNSW · NCUK · UOW" : "每一个进步，都值得被记录。"}</span></footer></div>`;
+    )}</nav><div class="sidebar-spacer"></div><div class="side-footer"><div class="avatar">${esc(state.user.name.slice(0, 1))}</div><div><strong>${esc(state.user.name)}</strong><small>${teacher ? "Master 管理台" : "学生学习空间"}</small></div><button data-action="logout" title="退出登录" aria-label="退出登录">${icon("logout")}</button></div></aside><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="menu" aria-label="展开导航">${icon("menu")}</button><span>${teacher ? "Master 管理台" : "词间课堂"}</span>${icon("chevron")}<strong>${label}</strong></div><div class="top-actions">${fontControls()}${teacher ? "" : '<div id="exam-alert-area"></div>'}<span class="today-label">${new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</span><span class="divider"></span>${teacher ? `<button class="btn btn-light btn-sm" data-action="install">${icon("download")}教师桌面快捷方式</button>` : '<span class="badge gray">网页学习</span>'}<button class="icon-button" data-action="help" title="使用帮助" aria-label="使用帮助">${icon("help")}</button><span class="avatar">${esc(state.user.name.slice(0, 1))}</span></div></header>${state.user.isDemo ? `<div class="demo-banner">演示空间 · 所有姓名与成绩均为示例，和正式班级隔离。${teacher ? '<button data-action="demo-pick">体验学生端 →</button>' : '<button data-action="demo-teacher">返回教师端 →</button>'}</div>` : ""}${state.user.role === "student" && state.user.initialPassword ? '<div class="demo-banner">账号已由老师开通，你可以设置自己的登录密码。<button data-action="nav" data-view="account">修改密码 →</button></div>' : ""}<div id="connection-status">${!navigator.onLine ? '<div class="connection-banner">当前离线。测试和提交需要联网，请保持应用打开并恢复连接。</div>' : ""}</div><main class="main ${teacher ? "" : "student-main"}" id="main-view">${content()}</main><footer class="main page-footer"><span>LexiClass 词间课堂 · 让词汇在语境中生长</span><span>${teacher ? "UNSW · NCUK · UOW" : "每一个进步，都值得被记录。"}</span></footer></div>`;
 }
 function heading(title, subtitle, actions = "") {
   return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;
@@ -286,7 +541,7 @@ function recentTask(t) {
 }
 function gradeData() {
   const a = state.analytics;
-  const all = enrichGradeRows(
+  const all = assessmentRows(
     state.results,
     state.tasks,
     state.words,
@@ -320,61 +575,29 @@ function dashboard() {
     ]),
   ];
   const groups = [...new Set(scope.flatMap((r) => r.groups))].sort((x, y) =>
-    x.localeCompare(y, "zh-CN", { numeric: true }),
+    x.localeCompare(y, "en", { numeric: true }),
   );
-  const done = rows.filter(
-    (r) => r.state === "submitted" && Number.isFinite(r.score),
+  const weekly = learningGroups(
+    scope.filter((r) => r.examAt <= now() || completedGrade(r)),
   );
-  const bands = [
-    ["high", "80–100 分"],
-    ["middle", "60–79 分"],
-    ["low", "低于 60 分"],
-    ["pending", "尚未提交"],
-  ];
-  const detail = rows.filter(
-    (r) => a.band === "all" || scoreBand(r) === a.band,
-  );
-  const students = summarizeGrades(detail, "studentId").sort(
-    (x, y) => (x.average ?? -1) - (y.average ?? -1),
-  );
-  const weekly = summarizeGrades(scope, "groups").sort((x, y) =>
-    x.value.localeCompare(y.value, "zh-CN", { numeric: true }),
-  );
-  const classStats = summarizeGrades(rows, "classId");
-  return `${heading("教学概览", "按项目、科目与教学周追踪成绩，点击图表查看学生明细。", `<a class="btn btn-light" href="/design-options.html" target="_blank" rel="noopener">五种界面预览 ↗</a><button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}
-  <section class="panel grade-filters"><label>课程项目<select data-grade="program" aria-label="成绩项目">${option("all", "全部项目", a.program)}${state.config.programs.map((p) => option(p, p, a.program)).join("")}</select></label><label>科目<select data-grade="subject" aria-label="成绩科目">${option("all", "全部科目", a.subject)}${subjects.map((s) => option(s, nameSubject(s), a.subject)).join("")}</select></label><label>周次 / Topic<select data-grade="group" aria-label="成绩周次">${option("all", "全部周次 / Topic", a.group)}${groups.map((g) => option(g, g, a.group)).join("")}${scope.some((r) => !r.groups.length) ? option("ungrouped", "未标注周次 / 单元", a.group) : ""}</select></label><label>班级<select data-grade="classId" aria-label="成绩班级">${option("all", "全部班级", a.classId)}${state.classes
+  const classes = state.classes.map((c, i) => ({
+    key: c.id,
+    label: c.name,
+    value: gradeAverage(rows.filter((r) => r.classId === c.id)),
+    color: REPORT_COLORS[i % REPORT_COLORS.length],
+  }));
+  const visible = rows.filter((r) => a.band === "all" || inScoreBin(r, a.band));
+  return `${heading("教学概览", "先看整体变化，再按班级进入详细成绩报告。", `<button class="btn btn-light" data-action="nav" data-view="results">${icon("chart")}按班级查看成绩</button><button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}<section class="panel grade-filters"><label>课程项目<select data-grade="program" aria-label="成绩项目">${option("all", "全部项目", a.program)}${state.config.programs.map((p) => option(p, p, a.program)).join("")}</select></label><label>科目<select data-grade="subject" aria-label="成绩科目">${option("all", "全部科目", a.subject)}${subjects.map((s) => option(s, nameSubject(s), a.subject)).join("")}</select></label><label>周次 / Topic<select data-grade="group" aria-label="成绩周次">${option("all", "全部周次 / Topic", a.group)}${groups.map((g) => option(g, learningLabel(g), a.group)).join("")}${scope.some((r) => !r.groups.length) ? option("ungrouped", "未标注周次 / 单元", a.group) : ""}</select></label><label>班级<select data-grade="classId" aria-label="成绩班级">${option("all", "全部班级", a.classId)}${state.classes
     .filter(
       (c) =>
         (a.program === "all" || c.program === a.program) &&
         (a.subject === "all" ||
-          (c.courses || []).some((x) => x.subject === a.subject)),
+          c.courses?.some((x) => x.subject === a.subject)),
     )
     .map((c) => option(c.id, c.name, a.classId))
     .join(
       "",
-    )}</select></label><button class="btn btn-light" data-action="grade-reset">重置</button></section>
-  <section class="stats-grid">${stat("平均成绩", gradeAverage(rows), "分", "chart", `基于 ${done.length} 份有效提交`, "blue")}${stat("提交率", rows.length ? Math.round((done.length / rows.length) * 100) : 0, "%", "check", `${done.length} / ${rows.length} 份应交练习`)}${stat("应考学生", new Set(rows.map((r) => r.studentId)).size, "位", "users", "按当前筛选范围统计")}${stat("达到 80 分", done.filter((r) => r.score >= 80).length, "份", "spark", "未交卷不计入平均分", "purple")}</section>
-  <section class="grade-charts"><div class="panel"><div class="panel-header"><div><h2>周次成绩趋势</h2><p>点击柱形筛选周次 · 柱高为平均分</p></div></div><div class="grade-week-chart" role="group" aria-label="周次成绩趋势">${weekly.map((g) => `<button class="grade-week ${a.group === g.value ? "selected" : ""}" data-action="grade-group" data-group="${esc(g.value)}" aria-pressed="${a.group === g.value}" title="${esc(g.value)}：${g.average ?? "暂无"}分，${g.submitted}/${g.total}份已交"><b>${g.average ?? "—"}</b><span class="grade-track"><i style="height:${Math.max(2, g.average ?? 0)}%"></i></span><small>${esc(g.value.replace("Week ", "W"))}</small><em>${g.submitted}/${g.total} 已交</em></button>`).join("") || '<p class="muted">尚无考试记录</p>'}</div></div>
-  <div class="panel"><div class="panel-header"><div><h2>成绩分布</h2><p>点击分数段查看对应学生</p></div></div><div class="grade-distribution">${bands
-    .map(([key, label]) => {
-      const n = rows.filter((r) => scoreBand(r) === key).length;
-      return `<button data-action="grade-band" data-band="${key}" class="grade-band ${a.band === key ? "selected" : ""}" aria-pressed="${a.band === key}"><span>${label}</span><span class="grade-band-track"><i style="width:${rows.length ? (n / rows.length) * 100 : 0}%"></i></span><b>${n}</b></button>`;
-    })
-    .join(
-      "",
-    )}<button class="btn btn-quiet" data-action="grade-band" data-band="all">显示全部分数段</button></div></div></section>
-  <section class="panel grade-class-panel"><div class="panel-header"><div><h2>班级对比</h2><p>点击班级进一步筛选</p></div></div><div class="grade-class-chart">${classStats.map((c) => `<button data-action="grade-class" data-id="${esc(c.value)}" title="查看${esc(clsName(c.value))}"><span>${esc(clsName(c.value))}</span><i style="width:${Math.max(1, c.average ?? 0)}%"></i><b>${c.average ?? "—"} 分</b><small>${c.submitted}/${c.total} 已交</small></button>`).join("") || '<p class="muted">当前范围没有考试</p>'}</div></section>
-  <section class="panel"><div class="panel-header"><div><h2>学生成绩明细 ${a.band !== "all" ? `· ${bands.find((b) => b[0] === a.band)?.[1] || ""}` : ""}</h2><p>点击学生查看本范围内每次听写、分数与用时</p></div><span class="badge gray">${students.length} 位学生</span></div><div class="table-wrap"><table><thead><tr><th>姓名</th><th>班级</th><th>平均分</th><th>已交 / 应交</th><th>最低 / 最高分</th><th>查看</th></tr></thead><tbody>${students
-    .map((s) => {
-      const scores = s.rows
-        .filter((r) => r.state === "submitted" && Number.isFinite(r.score))
-        .map((r) => r.score);
-      const r = s.rows[0];
-      return `<tr><td><button class="section-link" data-action="grade-student" data-id="${esc(s.value)}">${esc(r.name)}</button></td><td>${esc(r.className)}</td><td><strong>${s.average ?? "—"}</strong></td><td>${s.submitted} / ${s.total}</td><td>${scores.length ? `${Math.min(...scores)} / ${Math.max(...scores)}` : "—"}</td><td><button class="btn btn-light btn-sm" data-action="grade-student" data-id="${esc(s.value)}">查看考试</button></td></tr>`;
-    })
-    .join(
-      "",
-    )}</tbody></table></div>${!students.length ? empty("暂无对应成绩", "调整筛选，或等待学生参加考试。") : ""}</section><p class="privacy-note">周次来自考试词汇分组；跨周考试在涉及的各周展示同一份成绩，总体统计不重复。无法识别周次的历史考试归入“未标注周次 / 单元”。尚未提交包括待开放、待完成、答题中和逾期未交。</p>`;
+    )}</select></label><button class="btn btn-light" data-action="grade-reset">重置</button></section>${reportMetricsView(rows)}<section class="report-chart-grid"><div class="panel report-panel"><header class="report-panel-header"><div><h2>教学周平均分趋势</h2><p>点击成绩点筛选周次，收到答卷后自动更新。</p></div></header>${linePlot([{ name: "平均分", color: "#365f80", points: weekly.map((g) => ({ key: g.key, value: g.average, label: g.label })) }], { items: weekly.map((g) => ({ key: g.key, label: g.label })), action: "grade-group", selected: a.group })}</div><div class="panel report-panel"><header class="report-panel-header"><div><h2>成绩分布</h2><p>点击区间查看相应学生。</p></div></header>${donutPlot(scoreBins(rows), { action: "grade-band", selected: a.band, average: gradeAverage(rows) })}${a.band !== "all" ? '<button class="btn btn-quiet" data-action="grade-band" data-key="all">显示全部分数段</button>' : ""}</div></section><section class="panel report-panel"><header class="report-panel-header"><div><h2>班级表现</h2><p>点击班级，进入各科成绩分析。</p></div></header>${barPlot(classes, { action: "report-class" })}</section><section class="panel report-panel"><header class="report-panel-header"><div><h2>学生学习表现</h2><p>点击学生查看各科、各次考试的完整学习画像。</p></div></header>${reportStudentCards(visible)}</section><p class="report-footnote">平均分仅统计已交答卷，未交卷不会被当成零分。各教学周的考试范围按词库分组识别。</p>`;
 }
 function option(value, label, current) {
   return `<option value="${esc(value)}" ${current === value ? "selected" : ""}>${esc(label)}</option>`;
@@ -384,6 +607,7 @@ function filters({
   classes = false,
   subject = false,
   subjectOptions = state.config.subjects,
+  subjectPlaceholder = "全部科目",
   search = false,
 } = {}) {
   return `<div class="toolbar">${search ? `<div class="search-field">${icon("search")}<input data-filter="search" aria-label="搜索" placeholder="搜索${state.view === "students" ? "姓名" : "名称或词汇"}…" value="${esc(state.filter.search)}"></div>` : ""}${program ? `<select data-filter="program" aria-label="按课程项目筛选">${option("all", "全部课程项目", state.filter.program)}${state.config.programs.map((p) => option(p, p, state.filter.program)).join("")}</select>` : ""}${
@@ -397,7 +621,7 @@ function filters({
           .map((c) => option(c.id, c.name, state.filter.classId))
           .join("")}</select>`
       : ""
-  }${subject ? `<select data-filter="subject" aria-label="按科目筛选">${option("all", "全部科目", state.filter.subject)}${subjectOptions.map((s) => option(s, nameSubject(s), state.filter.subject)).join("")}</select>` : ""}</div>`;
+  }${subject ? `<select data-filter="subject" aria-label="按科目筛选">${option("all", subjectPlaceholder, state.filter.subject)}${subjectOptions.map((s) => option(s, nameSubject(s), state.filter.subject)).join("")}</select>` : ""}</div>`;
 }
 const taskSubjectForClass = (t, c) =>
   t.program === "NCUK 国际预科" && t.subject === "Mathematics"
@@ -451,7 +675,7 @@ function tasksView() {
           return `<details class="task-subject-folder" data-task-folder="${key}" ${(state.taskFolders[key] ?? state.filter.subject !== "all") ? "open" : ""}><summary><strong>${esc(nameSubject(subject))}</strong><span>${entries.length} 次听写</span></summary><div class="task-list-head"><span>听写名称 / 题型</span><span>开放 / 截止</span><span>提交</span><span>状态</span><span>操作</span></div>${entries
             .map((t) => {
               const [label, color] = statusOf(t);
-              return `<article class="task-table-row"><div><strong>${esc(t.title)}</strong><small>${t.questionCount} 题 · ${t.duration} 分钟 · ${esc(taskModeName(t))}</small></div><div>${date(t.opensAt)}<small>至 ${date(t.closesAt)}</small></div><div>${t.submitted} / ${t.studentCount}</div><div>${badge(label, color, true)}</div><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">成绩</button><button class="btn btn-danger btn-sm" data-action="delete-task" data-id="${t.id}">删除</button></div></article>`;
+              return `<article class="task-table-row"><div><strong>${esc(t.title)}</strong><small>${t.questionCount} 题 · ${t.duration} 分钟 · ${esc(taskModeName(t))}</small></div><div>${date(t.opensAt)}<small>至 ${date(t.closesAt)}</small></div><div>${t.submitted} / ${t.studentCount}</div><div>${badge(label, color, true)}</div><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">成绩</button>${t.closesAt <= now() ? `<button class="btn btn-light btn-sm" data-action="retake-create" data-id="${t.id}">安排补考</button>` : ""}<button class="btn btn-danger btn-sm" data-action="delete-task" data-id="${t.id}">删除</button></div></article>`;
             })
             .join("")}</details>`;
         })
@@ -467,13 +691,40 @@ function classesView() {
   return `${heading("班级管理", "所有课程项目，一个清晰有序的教学空间。", `<button class="btn btn-primary" data-action="create-class">${icon("plus")}新建班级</button>`)}${filters()}<div class="class-cards">${classCards(classes)}</div>${!classes.length ? empty("从一个班级开始", "选择课程项目，创建班级后添加学生。", `<button class="btn btn-primary" data-action="create-class">新建班级</button>`) : ""}`;
 }
 function studentsView() {
-  const rows = state.students.filter(
-    (s) =>
-      (state.filter.program === "all" || s.program === state.filter.program) &&
-      (state.filter.classId === "all" || s.classId === state.filter.classId) &&
-      s.name.includes(state.filter.search),
+  const cls = state.classes.find((c) => c.id === state.filter.classId);
+  const q = state.filter.search.trim().toLowerCase();
+  const title = heading(
+    "学生名单",
+    cls
+      ? "按班级管理学生账号，点击学生查看全科学习画像。"
+      : "先选择班级，再展开学生名单。",
+    `<button class="btn btn-light" data-action="export-students">${icon("download")}导出${cls ? "本班" : "名单"}</button><button class="btn btn-primary" data-action="add-students">${icon("plus")}添加学生</button>`,
   );
-  return `${heading("学生名单", "每一位学生的练习与进步，都有迹可循。", `<button class="btn btn-light" data-action="export-students">${icon("download")}导出名单</button><button class="btn btn-primary" data-action="add-students">${icon("plus")}添加学生</button>`)}${filters({ classes: true, search: true })}<div class="panel"><div class="panel-header"><h2>班级学生 <small class="muted">&nbsp; ${rows.length} 位</small></h2><span class="muted" style="font-size:10px">学生通过账号登录，考试与错题跨设备保存</span></div><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>网页账号</th><th>课程项目 / 班级</th><th>完成听写</th><th>平均成绩</th><th>待复习错词</th><th>账号与操作</th></tr></thead><tbody>${rows.map((s) => `<tr><td><div class="person"><span class="avatar">${esc(s.name.slice(-1))}</span><strong>${esc(s.name)}</strong></div></td><td>${esc(s.username || "尚未开通")}<div class="table-secondary">${s.accountReady ? "已开通" : "等待学生开通"}</div></td><td>${esc(clsName(s.classId))}<div class="table-secondary">${esc(s.program)}</div></td><td>${s.attempts} 次</td><td><span class="score ${s.average !== null && s.average < 60 ? "low" : ""}">${s.average ?? "—"}</span>${s.average !== null ? ' <small class="muted">分</small>' : ""}</td><td>${s.mistakes ? badge(`${s.mistakes} 个`, "gold") : '<span class="muted">暂无</span>'}</td><td><button class="btn btn-light btn-sm" data-action="student-invite" data-id="${s.id}">${icon("repeat")}重置并获取入口</button><button class="btn btn-danger btn-sm" data-action="delete-student" data-id="${s.id}">删除学生</button></td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("这里还没有学生", "先创建班级，再批量添加学生姓名。") : ""}</div>`;
+  if (!cls)
+    return (
+      title +
+      filters({ classes: false, search: true }) +
+      classChoiceCards("roster-class", q)
+    );
+  const rows = state.students
+    .filter(
+      (s) =>
+        s.classId === cls.id &&
+        `${s.name} ${s.username || ""}`.toLowerCase().includes(q),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+  return `${title}<nav class="report-breadcrumb"><button data-action="roster-root">全部班级</button>${icon("chevron")}<strong>${esc(cls.name)}</strong></nav><div class="roster-context"><div><span>${esc(cls.program)}</span><h2>${esc(cls.name)}</h2><p>${state.students.filter((s) => s.classId === cls.id).length} 位学生 · ${(cls.courses || []).map((c) => esc(c.title || nameSubject(c.subject))).join(" · ")}</p></div><div class="search-field">${icon("search")}<input data-filter="search" aria-label="搜索本班学生" placeholder="搜索本班姓名或账号" value="${esc(state.filter.search)}"></div></div><div class="roster-student-grid">${
+    rows
+      .map((s) => {
+        const history = reportData().filter((r) => r.studentId === s.id),
+          exams = assessmentGroups(history)
+            .filter((e) => Number.isFinite(e.average))
+            .slice(-7);
+        return `<article class="roster-student-card"><button class="roster-person" data-action="report-student" data-id="${s.id}"><span class="avatar">${esc(s.name.slice(-1))}</span><div><h3>${esc(s.name)}</h3><small>${esc(s.username || "尚未开通账号")}</small></div>${icon("arrow")}</button><div class="roster-student-progress"><div><strong>${s.average ?? "—"}</strong><small>${s.average === null ? "等待首次听写" : "正式听写均分"}</small></div>${miniPlot(exams.map((e) => e.average))}</div><div class="roster-student-status"><span>${s.attempts}次完成</span><span>${s.mistakes}项待复习</span>${badge(s.accountReady ? "账号已开通" : "待开通", s.accountReady ? "gray" : "gold")}</div><details class="student-account-menu"><summary>账号操作 ${icon("down")}</summary><div><button class="btn btn-light btn-sm" data-action="student-invite" data-id="${s.id}">重置并获取入口</button><button class="btn btn-danger btn-sm" data-action="delete-student" data-id="${s.id}">删除学生</button></div></details></article>`;
+      })
+      .join("") ||
+    empty("没有匹配的学生", "可调整搜索条件，或向这个班级添加学生。")
+  }</div>`;
 }
 function wordSubjects(program) {
   if (program === "all") return state.config.subjects;
@@ -486,21 +737,41 @@ function wordSubjects(program) {
   ]);
   return state.config.subjects.filter((subject) => available.has(subject));
 }
+function libraryGroupLabel(group) {
+  const week = /^Week\s*(\d+)/i.exec(group || "");
+  if (week) return `第${Number(week[1])}周 · W${week[1].padStart(2, "0")}`;
+  return group;
+}
+function librarySubjectChoices(subjects, { student = false } = {}) {
+  return `<section class="scope-picker"><div class="scope-picker-copy">${icon("book")}<h2>选择${student ? "你的学习科目" : "课程科目"}</h2><p>选定科目后，才会显示对应的词汇和周次 / Topic。</p></div><div class="scope-subject-grid">${subjects.map((s) => `<button data-action="${student ? "learning-subject" : "library-subject"}" data-key="${esc(s)}"><span class="subject-icon">${icon(subjectIcon(s))}</span><strong>${esc(nameSubject(s))}</strong>${icon("arrow")}</button>`).join("") || '<p class="muted">当前项目尚未配置科目。</p>'}</div></section>`;
+}
 function wordsView() {
-  const subjects = wordSubjects(state.filter.program);
-  if (
-    state.filter.subject !== "all" &&
-    !subjects.includes(state.filter.subject)
-  ) {
+  const program = state.filter.program,
+    subjects = wordSubjects(program);
+  if (program === "all" || !subjects.includes(state.filter.subject)) {
     state.filter.subject = "all";
     state.filter.group = "all";
-    state.wordLimit = 60;
   }
-  const available = state.words.filter(
-    (w) =>
-      (w.program !== "通用示例" || subjects.includes(w.subject)) &&
-      wordAvailableFor(w, state.filter.program, state.filter.subject),
+  const selected = program !== "all" && state.filter.subject !== "all";
+  const header = heading(
+    "课程词库",
+    "先选择项目与科目，再按教学周或Topic查阅词汇。",
+    `<button class="btn btn-light" data-action="import-words">${icon("upload")}批量导入</button><button class="btn btn-primary" data-action="add-word">${icon("plus")}添加词汇</button>`,
   );
+  const controls = `<div class="library-scope-controls"><label><span>课程项目</span><select data-filter="program" aria-label="选择词库项目">${option("all", "请选择课程项目", program)}${state.config.programs.map((p) => option(p, p, program)).join("")}</select></label><label><span>科目</span><select data-filter="subject" aria-label="选择词库科目" ${program === "all" ? "disabled" : ""}>${option("all", program === "all" ? "先选择项目" : "请选择科目", state.filter.subject)}${program !== "all" ? subjects.map((s) => option(s, nameSubject(s), state.filter.subject)).join("") : ""}</select></label>${selected ? `<div class="search-field">${icon("search")}<input data-filter="search" aria-label="搜索当前科目词汇" placeholder="搜索这个科目的词汇…" value="${esc(state.filter.search)}"></div>` : ""}</div>`;
+  if (program === "all")
+    return (
+      header +
+      controls +
+      `<section class="scope-picker"><div class="scope-picker-copy">${icon("book")}<h2>从一个课程项目开始</h2><p>各项目的词汇、科目与周次分别整理。</p></div><div class="scope-program-grid">${state.config.programs.map((p) => `<button data-action="library-program" data-key="${esc(p)}"><span>${esc(programShort(p))}</span><strong>${esc(p)}</strong><small>${wordSubjects(p).length} 门可选科目</small>${icon("arrow")}</button>`).join("")}</div></section>`
+    );
+  if (!selected) return header + controls + librarySubjectChoices(subjects);
+  const all = state.words.filter((w) =>
+    wordAvailableFor(w, program, state.filter.subject),
+  );
+  const available = all.some((w) => w.program !== "通用示例")
+    ? all.filter((w) => w.program !== "通用示例")
+    : all;
   const groups = [...new Set(available.flatMap((w) => w.groups || []))].sort(
     (a, b) => a.localeCompare(b, "en", { numeric: true }),
   );
@@ -509,41 +780,395 @@ function wordsView() {
     : "all";
   const words = available.filter(
     (w) =>
-      (group === "all" || (w.groups || []).includes(group)) &&
+      (group === "all" || w.groups?.includes(group)) &&
       `${w.term} ${w.translation}`
         .toLowerCase()
         .includes(state.filter.search.toLowerCase()),
   );
-  return `${heading("课程词库", "从专业词汇到真实题干，让理解多走一步。", `<button class="btn btn-light" data-action="import-words">${icon("upload")}批量导入</button><button class="btn btn-primary" data-action="add-word">${icon("plus")}添加词汇</button>`)}<div class="alert">${icon("book")} 内置内容为自编场景示例，并非 UNSW、NCUK 或 UOW 官方课程词表。请按实际教材和授课范围补充词汇。中文答案按老师设置的释义及可接受答案匹配。</div>${filters({ subject: true, subjectOptions: subjects, search: true })}<div class="toolbar"><select data-filter="group" aria-label="按Topic、周次或单元筛选">${option("all", "全部 Topic / 周次 / 单元", group)}${groups.map((g) => option(g, g, group)).join("")}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, state.wordLimit || 60)} 条</span></div><div class="cards-grid">${words
-    .slice(0, state.wordLimit || 60)
-    .map(
-      (w) =>
-        `<article class="word-card">${badge(nameSubject(state.filter.program === "UOW 沃隆港预科" && state.filter.subject !== "all" ? state.filter.subject : w.subject), "gray")} ${badge(w.program === "通用示例" ? "通用场景" : state.filter.program === "UOW 沃隆港预科" && w.program === "UNSW 新南预科" ? "新南共用词库" : programShort(w.program))}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9;margin-bottom:14px">${esc(w.sentenceZh)}</p><footer><span>${esc(w.source)}</span></footer></article>`,
-    )
-    .join(
-      "",
-    )}</div>${words.length > (state.wordLimit || 60) ? `<button class="btn btn-light" data-action="more-words">加载更多词汇</button>` : ""}${!words.length ? empty("还没有匹配的词汇", "添加本学科词汇和场景句，或调整筛选条件。") : ""}`;
+  const groupType =
+    program === "NCUK 国际预科" &&
+    ["Business", "Economics"].includes(state.filter.subject)
+      ? "Topic"
+      : "周次 / 单元";
+  return (
+    header +
+    controls +
+    `<div class="library-current-scope"><div><span>${esc(program)}</span><h2>${esc(nameSubject(state.filter.subject))}</h2></div><label><span>${groupType}</span><select data-filter="group" aria-label="按当前科目周次筛选">${option("all", `全部${groupType}`, group)}${groups.map((g) => option(g, libraryGroupLabel(g), group)).join("")}</select></label><p>${words.length} 个词汇 · 已显示 ${Math.min(words.length, state.wordLimit || 60)} 个</p></div><div class="cards-grid">${words
+      .slice(0, state.wordLimit || 60)
+      .map(
+        (w) =>
+          `<article class="word-card">${badge(nameSubject(state.filter.subject), "gray")}${program === "UOW 沃隆港预科" && w.program === "UNSW 新南预科" ? badge("新南共用词库") : ""}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary word-chinese-context">${esc(w.sentenceZh)}</p><footer><span>${esc((w.groups || []).map(libraryGroupLabel).join(" · ") || w.source)}</span></footer></article>`,
+      )
+      .join(
+        "",
+      )}</div>${words.length > (state.wordLimit || 60) ? '<button class="btn btn-light" data-action="more-words">加载更多词汇</button>' : ""}${!words.length ? empty("当前范围暂无词汇", "可调整周次或搜索条件，也可导入这个科目的词汇。") : ""}<p class="library-note">词汇由master按课程维护，双语例句用于课堂学习与模拟练习。</p>`
+  );
 }
+
 function visibleResults() {
-  return enrichGradeRows(
+  return reportRows();
+}
+function newReport() {
+  return {
+    classId: null,
+    subject: null,
+    studentId: null,
+    group: "all",
+    taskId: null,
+    band: "all",
+    limit: 16,
+    hidden: [],
+    studentLimit: 48,
+    examLimit: 12,
+  };
+}
+function reportData() {
+  const c = state.reportCache;
+  if (
+    c &&
+    c.results === state.results &&
+    c.tasks === state.tasks &&
+    c.words === state.words &&
+    c.classes === state.classes
+  )
+    return c.rows;
+  const rows = assessmentRows(
     state.results,
     state.tasks,
     state.words,
     state.classes,
-  ).filter(
-    (r) =>
-      (!state.resultTaskId || r.taskId === state.resultTaskId) &&
-      (state.filter.program === "all" || r.program === state.filter.program) &&
-      (state.filter.classId === "all" || r.classId === state.filter.classId) &&
-      (state.filter.subject === "all" || r.subject === state.filter.subject) &&
-      `${r.name} ${r.taskTitle}`.includes(state.filter.search),
+  );
+  state.reportCache = {
+    results: state.results,
+    tasks: state.tasks,
+    words: state.words,
+    classes: state.classes,
+    rows,
+  };
+  return rows;
+}
+function reportRows({ group = true, task = true, band = false } = {}) {
+  const r = state.report;
+  return reportData().filter(
+    (x) =>
+      (!r.classId || x.classId === r.classId) &&
+      (!r.studentId || x.studentId === r.studentId) &&
+      (!r.subject || x.subject === r.subject) &&
+      (!group ||
+        r.group === "all" ||
+        (r.group === "未标注分组"
+          ? !x.groups.length
+          : x.groups.includes(r.group))) &&
+      (!task || !r.taskId || x.taskId === r.taskId) &&
+      (!band || inScoreBin(x, r.band)),
   );
 }
-function resultsView() {
-  const rows = visibleResults(),
-    done = rows.filter((r) => r.score !== null);
-  return `${heading("成绩分析", "看见每次提交，也看见需要多一点帮助的学生。", `<button class="btn btn-light" data-action="export-results">${icon("download")}导出成绩 CSV</button>`)}<div class="stats-grid">${stat("应交练习", rows.length, "份", "clipboard", "按当前筛选范围统计")}${stat("已交练习", done.length, "份", "check", `提交率 <strong>${rows.length ? Math.round((done.length / rows.length) * 100) : 0}%</strong>`, "blue")}${stat("平均成绩", mean(done), "分", "chart", "每份听写按 100 分制计分", "gold")}${stat("达到 80 分", done.filter((r) => r.score >= 80).length, "份", "spark", "用于识别当前词汇掌握情况", "purple")}</div>${state.resultTaskId ? `<div class="alert">当前任务：${esc(state.tasks.find((t) => t.id === state.resultTaskId)?.title)} <button class="btn btn-quiet" data-action="clear-task-filter">查看全部任务 ×</button></div>` : ""}${filters({ classes: true, subject: true, search: true })}<div class="panel"><div class="table-wrap"><table><thead><tr><th>学生姓名</th><th>项目 / 班级</th><th>听写任务</th><th>成绩</th><th>考试用时</th><th>状态 / 提交时间</th><th>答题详情</th></tr></thead><tbody>${rows.map((r) => `<tr><td><div class="person"><span class="avatar">${esc(r.name.slice(-1))}</span>${esc(r.name)}</div></td><td>${esc(r.className)}<div class="table-secondary">${esc(programShort(r.program))} · ${esc(nameSubject(r.subject))}</div></td><td>${esc(r.taskTitle)}</td><td><span class="score ${r.score !== null && r.score < 60 ? "low" : ""}">${r.score ?? "—"}</span></td><td><strong>${r.state === "in_progress" ? "答题中" : formatElapsed(r.elapsedSeconds)}</strong></td><td>${badge({ submitted: r.timedOut ? "超时自动交卷" : "已提交", pending: "待完成", in_progress: "答题中", missing: "未提交" }[r.state], r.state === "missing" ? "red" : r.state === "submitted" ? "" : "blue")}<div class="table-secondary">${r.finishedAt ? date(r.finishedAt) : "—"}</div></td><td>${r.result ? `<button class="btn btn-light btn-sm" data-action="result-detail" data-task="${r.taskId}" data-student="${r.studentId}">查看详情</button>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty("暂无成绩记录", "发布任务后，这里会展示每位学生的完成状态。") : ""}</div>`;
+function openStudentReport(id) {
+  const student = state.students.find((s) => s.id === id);
+  if (!student) return;
+  state.report = { ...newReport(), classId: student.classId, studentId: id };
+  state.resultTaskId = null;
+  state.view = "results";
+  state.examResult = null;
+  render();
+  window.scrollTo(0, 0);
 }
+function reportCourseName(subject, cls) {
+  return (
+    cls?.courses?.find((c) => c.subject === subject)?.title ||
+    nameSubject(subject)
+  );
+}
+function reportStudentPicker() {
+  return `<label class="report-student-picker"><span>${icon("users")}查看学生学习画像</span><select data-report-student aria-label="查看某位学生的各科成绩">${option("", "选择学生…", state.report.studentId || "")}${state.classes
+    .map(
+      (c) =>
+        `<optgroup label="${esc(c.name)}">${state.students
+          .filter((s) => s.classId === c.id)
+          .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"))
+          .map((s) => option(s.id, s.name, state.report.studentId))
+          .join("")}</optgroup>`,
+    )
+    .join("")}</select></label>`;
+}
+function reportBreadcrumb(cls, student) {
+  return `<nav class="report-breadcrumb" aria-label="成绩分析层级"><button data-action="report-root">全部班级</button>${cls ? `${icon("chevron")}<button data-action="report-class" data-id="${cls.id}">${esc(cls.name)}</button>` : ""}${student ? `${icon("chevron")}<strong>${esc(student.name)} · 全科学习画像</strong>` : state.report.subject ? `${icon("chevron")}<strong>${esc(reportCourseName(state.report.subject, cls))}</strong>` : ""}</nav>`;
+}
+function reportMetricsView(rows) {
+  const m = gradeMetrics(rows, now());
+  return `<section class="report-metrics">${stat("平均成绩", m.average, "分", "chart", `基于 ${m.completed} 份已交答卷`, "blue")}${stat("已开放考试提交率", m.completion, "%", "check", m.due ? `${m.completed} 份已交 · ${m.due} 份应交` : "当前没有已开放的考试")}${stat("达到80分", m.good, "份", "spark", "仅统计实际提交成绩", "gold")}${stat("已参加学生", new Set(rows.filter(completedGrade).map((r) => r.studentId)).size, "位", "users", m.upcoming ? `另有 ${m.upcoming} 份待开始考试` : `${m.missing} 份逾期未交`)}</section>`;
+}
+function classChoiceCards(action = "report-class", search = "") {
+  const q = search.trim().toLowerCase();
+  const classes = state.classes.filter(
+    (c) =>
+      (state.filter.program === "all" || c.program === state.filter.program) &&
+      (!q ||
+        `${c.name} ${c.program}`.toLowerCase().includes(q) ||
+        state.students.some(
+          (s) =>
+            s.classId === c.id &&
+            `${s.name} ${s.username || ""}`.toLowerCase().includes(q),
+        )),
+  );
+  return (
+    state.config.programs
+      .map((program) => {
+        const chosen = classes
+          .filter((c) => c.program === program)
+          .sort((a, b) =>
+            a.name.localeCompare(b.name, "zh-CN", { numeric: true }),
+          );
+        if (!chosen.length) return "";
+        return `<section class="class-choice-section"><header><span>${esc(programShort(program))}</span><h2>${esc(program)}</h2><small>${chosen.length} 个班级</small></header><div class="class-choice-grid">${chosen
+          .map((c) => {
+            const rows = reportData().filter((r) => r.classId === c.id),
+              m = gradeMetrics(rows, now());
+            const students = state.students.filter((s) => s.classId === c.id),
+              matched = q
+                ? students.filter((s) =>
+                    `${s.name} ${s.username || ""}`.toLowerCase().includes(q),
+                  )
+                : [];
+            const exams = assessmentGroups(rows)
+              .filter((e) => Number.isFinite(e.average))
+              .slice(-8);
+            return `<button class="class-choice-card" data-action="${action}" data-id="${c.id}"><div class="class-choice-top"><span class="class-emblem">${icon("class")}</span><span>${students.length} 位学生</span></div><h3>${esc(c.name)}</h3><p>${(c.courses || []).map((x) => esc(x.title || nameSubject(x.subject))).join(" · ") || "尚未配置科目"}</p>${
+              action === "report-class"
+                ? `<div class="class-choice-chart">${miniPlot(exams.map((e) => e.average))}<div><strong>${m.average ?? "—"}</strong><small>${m.average === null ? "等待首次提交" : "班级均分"}</small></div></div>`
+                : `<div class="class-avatar-row">${students
+                    .slice(0, 5)
+                    .map((s) => `<i>${esc(s.name.slice(-1))}</i>`)
+                    .join(
+                      "",
+                    )}<span>${matched.length ? `找到 ${matched.length} 位匹配学生` : "按姓名查看与管理账号"}</span></div>`
+            }<footer><span>${action === "report-class" ? "查看各科成绩" : "展开学生名单"}</span>${icon("arrow")}</footer></button>`;
+          })
+          .join("")}</div></section>`;
+      })
+      .join("") || empty("没有匹配的班级", "调整项目或搜索条件后再试。")
+  );
+}
+function reportStudentCards(
+  rows,
+  { students = null, action = "report-student", band = "all" } = {},
+) {
+  const filtered =
+    band === "all" ? rows : rows.filter((r) => inScoreBin(r, band));
+  const people = studentGroups(filtered, band === "all" ? students || [] : []);
+  return `<div class="report-student-grid">${
+    people
+      .map((s) => {
+        const exams = assessmentGroups(s.rows)
+          .filter((e) => Number.isFinite(e.average))
+          .slice(-7);
+        return `<button class="report-student-card" data-action="${action}" data-id="${s.key}"><div class="report-person"><span class="avatar">${esc(s.name.slice(-1))}</span><div><strong>${esc(s.name)}</strong><small>${esc(clsName(s.classId))}</small></div><span class="report-person-score">${s.average ?? "—"}<small>${s.average === null ? "暂无成绩" : "均分"}</small></span></div><div class="student-spark">${miniPlot(exams.map((e) => e.average))}<span>${s.total ? `${s.completed} / ${s.total} 份已交` : "未安排听写"}</span></div><footer>查看全科学习画像 ${icon("arrow")}</footer></button>`;
+      })
+      .join("") || '<p class="muted report-no-rows">当前分数段没有学生。</p>'
+  }</div>`;
+}
+function reportExamCards(rows, limit = 12) {
+  const records = [...rows]
+    .sort((a, b) => b.examAt - a.examAt || a.taskId.localeCompare(b.taskId))
+    .slice(0, limit);
+  return `<div class="report-exam-grid">${
+    records
+      .map((r) => {
+        const done = completedGrade(r),
+          status = done
+            ? "已交卷"
+            : r.examAt > now()
+              ? "待开始"
+              : r.state === "in_progress"
+                ? "答题中"
+                : "未提交";
+        return `<article class="report-exam-card" data-student="${r.studentId}" data-task="${r.taskId}"><div class="report-exam-heading"><span>${esc(nameSubject(r.subject))}</span><small>${date(r.examAt, true)}</small></div><h3>${esc(r.taskTitle)}</h3><p>${esc(r.groups.map(learningLabel).join(" · ") || "未标注周次")}</p><div class="report-exam-score"><strong>${done ? r.score : "—"}<small>${done ? "分" : status}</small></strong><span>${done ? `用时 ${formatElapsed(r.elapsedSeconds)}` : status}</span></div><div class="exam-score-track"><i style="width:${done ? r.score : 0}%"></i></div>${r.result ? `<button class="btn btn-light btn-sm" data-action="result-detail" data-task="${r.taskId}" data-student="${r.studentId}">逐题回看 ${icon("arrow")}</button>` : r.closesAt <= now() ? `<button class="btn btn-light btn-sm" data-action="retake-create" data-id="${r.taskId}" data-student="${r.studentId}">安排补考</button>` : ""}</article>`;
+      })
+      .join("") || '<div class="viz-empty"><p>当前范围没有考试记录。</p></div>'
+  }</div>`;
+}
+function reportGroupTabs(rows) {
+  const groups = learningGroups(rows);
+  return `<div class="report-group-tabs" role="group" aria-label="按教学周或Topic查看"><button data-action="report-group" data-key="all" class="${state.report.group === "all" ? "selected" : ""}">全部周次 / Topic</button>${groups.map((g) => `<button data-action="report-group" data-key="${esc(g.key)}" class="${state.report.group === g.key ? "selected" : ""}">${esc(g.label)}<small>${g.completed ? "已交 " + g.completed : "暂无提交"}</small></button>`).join("")}</div>`;
+}
+function reportHeatmap(rows, students) {
+  const groups = learningGroups(rows),
+    visible = students.slice(0, state.report.studentLimit);
+  if (!groups.length)
+    return '<div class="viz-empty"><p>发布听写并收到答卷后，这里会显示学生的掌握热力图。</p></div>';
+  const cells = visible
+    .map((s) => {
+      const row = rows.filter((r) => r.studentId === s.id);
+      return `<button class="heat-person" data-action="report-student" data-id="${s.id}">${esc(s.name)}</button>${groups
+        .map((g) => {
+          const selected = row.filter(
+              (r) =>
+                r.groups.includes(g.key) ||
+                (g.key === "未标注分组" && !r.groups.length),
+            ),
+            average = gradeAverage(selected);
+          const color =
+            average === null
+              ? "none"
+              : average < 60
+                ? "low"
+                : average < 80
+                  ? "middle"
+                  : average < 90
+                    ? "strong"
+                    : "excellent";
+          const description =
+            average === null
+              ? selected.length
+                ? "尚未提交"
+                : "未安排"
+              : `平均 ${average} 分`;
+          return `<button class="heat-cell ${color} ${selected.length && !Number.isFinite(average) ? "pending" : ""}" data-action="report-cell" data-student="${s.id}" data-key="${esc(g.key)}" aria-label="${esc(s.name)}，${esc(g.label)}，${description}" title="${esc(s.name)} · ${esc(g.label)} · ${description}"><span class="visually-hidden">${description}</span></button>`;
+        })
+        .join("")}`;
+    })
+    .join("");
+  return `<div class="heatmap-scroll"><div class="report-heatmap" style="grid-template-columns:140px repeat(${groups.length},minmax(46px,1fr));min-width:${Math.max(420, 140 + groups.length * 46)}px"><span class="heat-corner">学生 / 教学周</span>${groups.map((g) => `<button class="heat-group" data-action="report-group" data-key="${esc(g.key)}" title="${esc(g.key)}">${esc(g.label)}</button>`).join("")}${cells}</div></div><div class="heat-legend"><span><i class="low"></i>低于60</span><span><i class="middle"></i>60–79</span><span><i class="strong"></i>80–89</span><span><i class="excellent"></i>90–100</span><span><i class="none"></i>未安排 / 未交</span></div>${students.length > visible.length ? '<button class="btn btn-quiet" data-action="report-more-students">展开其余学生</button>' : ""}`;
+}
+function reportRangeControls() {
+  return `<div class="chart-range" role="group" aria-label="趋势图显示范围">${[8, 16, "all"].map((n) => `<button data-action="report-range" data-key="${n}" aria-pressed="${String(state.report.limit) === String(n)}" class="${String(state.report.limit) === String(n) ? "selected" : ""}">${n === "all" ? "全部考试" : `最近${n}场`}</button>`).join("")}</div>`;
+}
+function reportTrend(rows, { student = false, cls = null } = {}) {
+  const allExams = assessmentGroups(rows).filter(
+      (e) => e.at <= now() || e.completed,
+    ),
+    exams =
+      state.report.limit === "all"
+        ? allExams
+        : allExams.slice(-Number(state.report.limit));
+  const items = exams.map((e) => ({
+    key: e.key,
+    label: reportDay(e.at),
+    fullLabel: e.title + " · " + reportDay(e.at),
+  }));
+  let courses = courseGroups(rows, cls?.courses || []);
+  if (!student)
+    courses = [
+      {
+        key: state.report.subject || "class",
+        color: "#365f80",
+        rows,
+        average: gradeAverage(rows),
+      },
+    ];
+  const series = courses
+    .filter((c) => !state.report.hidden.includes(c.key))
+    .map((c) => ({
+      key: c.key,
+      name: student ? reportCourseName(c.key, cls) : "班级均分",
+      color: c.color,
+      points: exams
+        .filter((e) => !student || e.subject === c.key)
+        .map((e) => ({
+          key: e.key,
+          value: e.average,
+          label: e.title,
+          note: `${e.completed}份已交`,
+        })),
+    }));
+  return `${student ? `<div class="chart-series-legend">${courses.map((c) => `<button data-action="report-series" data-key="${esc(c.key)}" class="${state.report.hidden.includes(c.key) ? "muted-series" : ""}" aria-pressed="${!state.report.hidden.includes(c.key)}"><i style="background:${c.color}"></i>${esc(reportCourseName(c.key, cls))}</button>`).join("")}</div>` : ""}${linePlot(series, { items, action: "report-exam", selected: state.report.taskId, label: student ? "学生各科考试轨迹" : "本周各次考试成绩走势" })}`;
+}
+function resultsView() {
+  const r = state.report;
+  const cls = state.classes.find((c) => c.id === r.classId),
+    student = state.students.find((s) => s.id === r.studentId);
+  if (r.studentId && !student) r.studentId = null;
+  if (r.classId && !cls) {
+    state.report = newReport();
+    return resultsView();
+  }
+  const title = student
+    ? `${student.name}的学习画像`
+    : r.subject
+      ? `${reportCourseName(r.subject, cls)} · 成绩报告`
+      : cls
+        ? `${cls.name} · 各科成绩`
+        : "成绩分析";
+  const intro = student
+    ? "各科放在一起看，也能点开每一次考试。"
+    : r.subject
+      ? "从跨周变化到周内表现，点击图表查看学生与答卷。"
+      : cls
+        ? "选择一门科目，查看周次走势与学生掌握情况。"
+        : "从班级开始，逐层查看科目、周次与学生。";
+  const top = `${reportBreadcrumb(cls, student)}${heading(student ? "学生学习画像" : "成绩分析", intro, `<button class="btn btn-light" data-action="export-results">${icon("download")}导出当前成绩</button>`)}${cls ? `<div class="report-context"><div><span>${esc(cls.program)}</span><h2>${esc(title)}</h2></div>${reportStudentPicker()}</div>` : `<div class="report-entry-toolbar">${reportStudentPicker()}</div>`}`;
+  if (!cls) return top + classChoiceCards("report-class");
+  const classRows = reportData().filter((x) => x.classId === cls.id);
+  if (!r.subject && !student) {
+    const courses = courseGroups(classRows, cls.courses || []);
+    return (
+      top +
+      `<div class="course-choice-grid">${
+        courses
+          .map((c) => {
+            const exams = assessmentGroups(c.rows)
+              .filter((e) => Number.isFinite(e.average))
+              .slice(-8);
+            return `<button class="course-choice-card" data-action="report-subject" data-key="${esc(c.key)}"><div><span class="subject-icon">${icon(subjectIcon(c.key))}</span><span>${c.completed} 份已交</span></div><h3>${esc(reportCourseName(c.key, cls))}</h3><div class="course-choice-score"><strong>${c.average ?? "—"}</strong><small>${c.average === null ? "暂无已交成绩" : "平均分"}</small></div>${miniPlot(
+              exams.map((e) => e.average),
+              c.color,
+            )}<footer>查看教学周报告 ${icon("arrow")}</footer></button>`;
+          })
+          .join("") || empty("尚无课程", "请先在班级管理中配置科目。")
+      }</div><section class="panel report-panel"><header class="report-panel-header"><div><h2>选择学生，查看全科学习画像</h2><p>个人画像会同时展示不同科目和每次考试。</p></div></header>${reportStudentCards(classRows, { students: state.students.filter((s) => s.classId === cls.id) })}</section>`
+    );
+  }
+  const scope = reportRows({ group: false, task: false }),
+    rows = reportRows();
+  if (student) {
+    const courses = courseGroups(
+        reportData().filter((x) => x.studentId === student.id),
+        cls.courses || [],
+      ),
+      personalTasks = new Set(
+        reportData()
+          .filter((x) => x.studentId === student.id)
+          .map((x) => x.taskId),
+      );
+    const comparison = courses.map((c) => ({
+      key: c.key,
+      label: reportCourseName(c.key, cls),
+      value: c.average,
+      color: c.color,
+      reference: gradeAverage(
+        classRows.filter(
+          (x) => x.subject === c.key && personalTasks.has(x.taskId),
+        ),
+      ),
+      note: `${c.completed}份已交`,
+    }));
+    const observed = rows.filter((x) => x.examAt <= now() || completedGrade(x));
+    return (
+      top +
+      `<div class="subject-focus-tabs"><button data-action="report-all-subjects" class="${!r.subject ? "selected" : ""}">全部科目</button>${courses.map((c) => `<button data-action="report-subject" data-key="${esc(c.key)}" class="${r.subject === c.key ? "selected" : ""}">${esc(reportCourseName(c.key, cls))}</button>`).join("")}</div>${reportMetricsView(rows)}<section class="report-chart-grid"><div class="panel report-panel"><header class="report-panel-header"><div><h2>各科表现对照</h2><p>实色为本人均分，竖线为同场考试的班级均分。</p></div></header>${barPlot(comparison, { selected: r.subject, reference: true })}</div><div class="panel report-panel"><header class="report-panel-header"><div><h2>成绩分布</h2><p>只统计已交试卷，未交卷不按0分处理。</p></div></header>${donutPlot(scoreBins(rows), { average: gradeAverage(rows), selected: r.band })}</div></section><section class="panel report-panel"><header class="report-panel-header"><div><h2>各科考试轨迹</h2><p>点击图例可隐藏某科目，点击成绩点可回看试卷。</p></div>${reportRangeControls()}</header>${reportTrend(scope, { student: true, cls })}</section><section class="panel report-panel"><header class="report-panel-header"><div><h2>每次考试</h2><p>${r.band !== "all" ? "正在按所选分数段筛选。" : "按时间回看作答情况与用时。"}</p></div>${r.band !== "all" ? '<button class="btn btn-quiet" data-action="report-band" data-key="all">清除分数段</button>' : ""}</header>${reportExamCards(
+        observed.filter((x) => inScoreBin(x, r.band)),
+        r.examLimit,
+      )}${observed.filter((x) => inScoreBin(x, r.band)).length > r.examLimit ? '<button class="btn btn-light report-load-more" data-action="report-more-exams">显示更早的考试</button>' : ""}</section>${
+        rows.some((x) => !completedGrade(x) && x.examAt > now())
+          ? `<details class="report-upcoming"><summary>待开始的考试 · ${rows.filter((x) => !completedGrade(x) && x.examAt > now()).length} 场</summary>${reportExamCards(
+              rows.filter((x) => !completedGrade(x) && x.examAt > now()),
+              1000,
+            )}</details>`
+          : ""
+      }`
+    );
+  }
+  const groups = learningGroups(
+      scope.filter((x) => x.examAt <= now() || completedGrade(x)),
+    ),
+    people = state.students.filter((s) => s.classId === cls.id);
+  return (
+    top +
+    reportGroupTabs(scope) +
+    `${r.taskId ? `<div class="report-selection"><strong>当前考试：${esc(state.tasks.find((t) => t.id === r.taskId)?.title || "")}</strong><button data-action="report-clear-exam">返回当前周次全部考试 ×</button></div>` : ""}${reportMetricsView(rows)}<section class="report-chart-grid"><div class="panel report-panel"><header class="report-panel-header"><div><h2>跨周 / Topic 平均分趋势</h2><p>点击一个教学周，联动查看下方考试与学生表现。</p></div></header>${linePlot([{ key: r.subject, name: "班级均分", color: "#365f80", points: groups.map((g) => ({ key: g.key, value: g.average, label: g.label, note: `${g.completed}份已交` })) }], { items: groups.map((g) => ({ key: g.key, label: g.label })), action: "report-group", selected: r.group, label: "跨周平均分趋势" })}</div><div class="panel report-panel"><header class="report-panel-header"><div><h2>成绩分布</h2><p>点击分数段，筛选下方对应学生。</p></div></header>${donutPlot(scoreBins(rows), { average: gradeAverage(rows), selected: r.band })}</div></section><section class="panel report-panel"><header class="report-panel-header"><div><h2>${r.group === "all" ? "各次考试走势" : learningLabel(r.group) + " · 周内考试走势"}</h2><p>一次考试一个点，悬停看分数，点击查看该场学生表现。</p></div>${reportRangeControls()}</header>${reportTrend(reportRows({ task: false }), { cls })}</section><section class="panel report-panel"><header class="report-panel-header"><div><h2>学生掌握热力图</h2><p>颜色表示成绩区间。点击格子看本周考试，点击姓名看全科画像。</p></div></header>${reportHeatmap(rows, people)}</section><section class="panel report-panel"><header class="report-panel-header"><div><h2>学生学习表现</h2><p>${r.band === "all" ? "每张卡片可进入该学生的全科学习画像。" : "已按所选分数段筛选；点击学生可查看完整画像。"}</p></div>${r.band !== "all" ? '<button class="btn btn-quiet" data-action="report-band" data-key="all">清除分数段 ×</button>' : ""}</header>${reportStudentCards(rows, { students: people, band: r.band })}</section><p class="report-footnote">平均分只计算有效已交答卷。教学周按考试词汇分组识别，跨周考试会出现在所涉及的周次，总体统计不重复。</p>`
+  );
+}
+
 function learningView() {
   const data = state.learning;
   if (state.learningError)
@@ -575,6 +1200,11 @@ function learningView() {
     state.filter.subject = "all";
     state.filter.group = "all";
   }
+  if (state.filter.subject === "all")
+    return (
+      heading("词汇学习", "先选择科目，再查看对应的周次、词汇和双语例句。") +
+      librarySubjectChoices(subjects, { student: true })
+    );
   const available = data.words.filter(
     (w) => state.filter.subject === "all" || w.subject === state.filter.subject,
   );
@@ -595,7 +1225,7 @@ function learningView() {
       `${w.term} ${w.translation}`.toLowerCase().includes(search),
   );
   const limit = state.wordLimit || 60;
-  return `${heading("词汇学习", `${data.className} · ${data.program === "NCUK 国际预科" ? "全部分组长期开放" : "全部周次与单元长期开放"}，无需等待老师发布考试。`)}<div class="alert">${icon("book")} 选择科目及${groupName}即可学习，支持预习与回顾。内容包含词汇、中文释义和双语场景例句；场景例句为教学材料，并非官方试题。</div>${filters({ program: false, subject: true, subjectOptions: subjects, search: true })}<div class="toolbar"><select data-filter="group" aria-label="按分组学习">${option("all", `全部 ${groupName}`, group)}${groups.map((g) => option(g, g, group)).join("")}${available.some((w) => !w.groups.length) ? option("ungrouped", "未分组词汇", group) : ""}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, limit)} 条</span></div><div class="cards-grid">${words
+  return `${heading("词汇学习", `${data.className} · ${data.program === "NCUK 国际预科" ? "全部分组长期开放" : "全部周次与单元长期开放"}，无需等待老师发布考试。`)}<div class="alert">${icon("book")} 选择科目及${groupName}即可学习，支持预习与回顾。内容包含词汇、中文释义和双语场景例句；场景例句为教学材料，并非官方试题。</div>${filters({ program: false, subject: true, subjectOptions: subjects, subjectPlaceholder: "请选择科目", search: true })}<div class="toolbar"><select data-filter="group" aria-label="按分组学习">${option("all", `全部 ${groupName}`, group)}${groups.map((g) => option(g, g, group)).join("")}${available.some((w) => !w.groups.length) ? option("ungrouped", "未分组词汇", group) : ""}</select><span class="muted">共 ${words.length} 条 · 已显示 ${Math.min(words.length, limit)} 条</span></div><div class="cards-grid">${words
     .slice(0, limit)
     .map(
       (w) =>
@@ -777,7 +1407,7 @@ function studentDashboard() {
     ),
     done = state.tasks.filter((t) => t.attempt?.submittedAt),
     due = state.mistakes.filter((m) => !m.resolved && m.nextReview <= now());
-  return `${heading("我的学习", "每天一点积累，让专业课里的每一句话都更清晰。", `<button class="btn btn-primary" data-action="nav" data-view="practice">${icon("clipboard")}自主模拟 · 随时练习</button><button class="btn btn-light" data-action="nav" data-view="learning">${icon("book")}词汇学习</button><button class="btn btn-light" data-action="notifications">${icon("bell")}开启任务提醒</button>`)}<section class="student-welcome"><h2>${esc(state.user.name)}，今天也要有所收获。</h2><p>${esc(state.user.className)}<br>老师已为你安排好学习内容，准备好就开始吧。</p>${art()}</section><div class="stats-grid">${stat("待完成测试", pending.length, "份", "clipboard", "记得在截止时间前提交")}${stat("已完成测试", done.length, "份", "check", "每一次努力都有记录", "blue")}${stat("听写平均分", mean(done.map((t) => ({ score: t.attempt.score }))), "分", "chart", "持续练习，慢慢进步", "gold")}${stat("今天待复习", due.length, "个", "repeat", `共 ${state.mistakes.filter((m) => !m.resolved).length} 个未掌握错词`, "purple")}</div><div class="panel-header" style="padding:0 0 18px"><h2>接下来，完成这些练习</h2><button class="section-link" data-action="nav" data-view="tasks">全部测试 ${icon("arrow")}</button></div><div class="cards-grid">${pending.slice(0, 3).map(studentTaskCard).join("")}</div>${!pending.length ? empty("今天的待办已清空", "可以去错题本复习，或者回看之前的成绩。", `<button class="btn btn-primary" data-action="nav" data-view="review">${icon("repeat")}复习错题</button>`) : ""}`;
+  return `${heading("我的学习", "每天一点积累，让专业课里的每一句话都更清晰。", `<button class="btn btn-primary" data-action="nav" data-view="practice">${icon("clipboard")}自主模拟 · 随时练习</button><button class="btn btn-light" data-action="nav" data-view="learning">${icon("book")}词汇学习</button><button class="btn btn-light" data-action="alerts-open">${icon("bell")}查看考试提醒</button>`)}<section class="student-welcome"><h2>${esc(state.user.name)}，今天也要有所收获。</h2><p>${esc(state.user.className)}<br>老师已为你安排好学习内容，准备好就开始吧。</p>${art()}</section><div class="stats-grid">${stat("待完成测试", pending.length, "份", "clipboard", "记得在截止时间前提交")}${stat("已完成测试", done.length, "份", "check", "每一次努力都有记录", "blue")}${stat("听写平均分", mean(done.map((t) => ({ score: t.attempt.score }))), "分", "chart", "持续练习，慢慢进步", "gold")}${stat("今天待复习", due.length, "个", "repeat", `共 ${state.mistakes.filter((m) => !m.resolved).length} 个未掌握错词`, "purple")}</div><div class="panel-header" style="padding:0 0 18px"><h2>接下来，完成这些练习</h2><button class="section-link" data-action="nav" data-view="tasks">全部测试 ${icon("arrow")}</button></div><div class="cards-grid">${pending.slice(0, 3).map(studentTaskCard).join("")}</div>${!pending.length ? empty("今天的待办已清空", "可以去错题本复习，或者回看之前的成绩。", `<button class="btn btn-primary" data-action="nav" data-view="review">${icon("repeat")}复习错题</button>`) : ""}`;
 }
 function studentTasks(history = false) {
   const tasks = state.tasks.filter((t) =>
@@ -926,10 +1556,12 @@ function content() {
 }
 function render() {
   if (!state.user) {
+    syncExamAlerts();
     renderAuth();
     return;
   }
   $("#app").innerHTML = shell();
+  syncExamAlerts();
   if (state.attempt) tick();
 }
 async function load() {
@@ -1026,7 +1658,7 @@ function renderAuth() {
   else
     fields = `${field("设置密钥", "setupKey", "password", state.config?.hosting === "cloudflare" ? "在 Cloudflare 中自行设置的 SETUP_KEY" : "从服务器 data/setup-key 获取")}${masterAccountField}${field("设置 Master 密码（至少 10 位）", "password", "password", "由你保管的管理密码")}${field("再次输入 Master 密码", "passwordConfirm", "password", "请再次输入密码")}${field("首个班级名称（UNSW，可稍后添加其他项目）", "className", "text", "例如：UNSW 商科 A 班")}`;
   $("#app").innerHTML =
-    `<div class="login-layout"><section class="login-art">${brand()}<div><div class="eyebrow" style="color:#FFD4A6;margin-top:45px">WORDS MEET THE REAL WORLD</div><h1>学会一个词，<br>读懂<em>更大的世界。</em></h1><p>从经济学的第一道题，到专业课的每一次进步。<br>打开网页，走进你的课堂。</p>${art()}</div><footer>UNSW · NCUK · UOW &nbsp; / &nbsp; YOUR CLASSROOM, CONNECTED.</footer></section><section class="login-form-area"><div class="login-box"><div class="login-badge">${icon("leaf")} 网页直接学习 · 无需安装</div><h2>${title}</h2><p>${tab === "setup" ? "由你设置唯一管理账户的密码，统一管理全部班级与教学内容。" : tab === "teacher" ? "统一维护全部项目、班级、学生名单、课程词库和考试。" : activating ? "只需首次开通，班级和项目由老师分配。" : "每次的成绩、错题与进步，都保存在你的账号中。"}</p>${state.requestedExamId ? '<div class="alert">你正在打开老师分享的考试。登录后将直接进入考试说明页，点击开始才计时。</div>' : ""}${tab !== "setup" ? `<div class="tabs"><button class="${tab !== "teacher" ? "active" : ""}" data-action="auth-tab" data-tab="student">学生账号</button><button class="${tab === "teacher" ? "active" : ""}" data-action="auth-tab" data-tab="teacher">Master 管理</button></div>` : ""}<form id="auth-form"><input type="hidden" name="role" value="${tab}">${fields}<button type="submit" class="btn btn-primary">${tab === "setup" ? "建立 Master 账户" : activating ? "开通账号并进入" : "进入课堂"} ${icon("arrow")}</button></form>${tab === "student" ? '<button class="btn btn-quiet" style="margin-top:10px" data-action="auth-tab" data-tab="activate">首次使用？用老师的学习码开通账号 →</button>' : ""}${activating ? '<button class="btn btn-quiet" style="margin-top:10px" data-action="auth-tab" data-tab="student">已有账号，直接登录 →</button>' : ""}<div class="login-bottom">${state.config?.demoAvailable ? '<p>想先看看课堂是什么样？</p><button data-action="demo-login">体验教师与学生演示 →</button>' : ""}${state.config?.setupRequired && tab !== "setup" ? '<p><button data-action="auth-tab" data-tab="setup">首次使用 · 设置 Master 账户</button></p>' : ""}${tab === "setup" ? '<button data-action="auth-tab" data-tab="teacher">返回登录</button>' : ""}</div><p class="privacy-note">${icon("shield")} 学生只需浏览器，无需安装客户端。请妥善保管账号与密码。<br>课程与班级由老师设置，历史成绩和错题跟随账号保存。</p></div></section></div>`;
+    `<div class="auth-font-controls">${fontControls()}</div><div class="login-layout"><section class="login-art">${brand()}<div><div class="eyebrow" style="color:#FFD4A6;margin-top:45px">WORDS MEET THE REAL WORLD</div><h1>学会一个词，<br>读懂<em>更大的世界。</em></h1><p>从经济学的第一道题，到专业课的每一次进步。<br>打开网页，走进你的课堂。</p>${art()}</div><footer>UNSW · NCUK · UOW &nbsp; / &nbsp; YOUR CLASSROOM, CONNECTED.</footer></section><section class="login-form-area"><div class="login-box"><div class="login-badge">${icon("leaf")} 网页直接学习 · 无需安装</div><h2>${title}</h2><p>${tab === "setup" ? "由你设置唯一管理账户的密码，统一管理全部班级与教学内容。" : tab === "teacher" ? "统一维护全部项目、班级、学生名单、课程词库和考试。" : activating ? "只需首次开通，班级和项目由老师分配。" : "每次的成绩、错题与进步，都保存在你的账号中。"}</p>${state.requestedExamId ? '<div class="alert">你正在打开老师分享的考试。登录后将直接进入考试说明页，点击开始才计时。</div>' : ""}${tab !== "setup" ? `<div class="tabs"><button class="${tab !== "teacher" ? "active" : ""}" data-action="auth-tab" data-tab="student">学生账号</button><button class="${tab === "teacher" ? "active" : ""}" data-action="auth-tab" data-tab="teacher">Master 管理</button></div>` : ""}<form id="auth-form"><input type="hidden" name="role" value="${tab}">${fields}<button type="submit" class="btn btn-primary">${tab === "setup" ? "建立 Master 账户" : activating ? "开通账号并进入" : "进入课堂"} ${icon("arrow")}</button></form>${tab === "student" ? '<button class="btn btn-quiet" style="margin-top:10px" data-action="auth-tab" data-tab="activate">首次使用？用老师的学习码开通账号 →</button>' : ""}${activating ? '<button class="btn btn-quiet" style="margin-top:10px" data-action="auth-tab" data-tab="student">已有账号，直接登录 →</button>' : ""}<div class="login-bottom">${state.config?.demoAvailable ? '<p>想先看看课堂是什么样？</p><button data-action="demo-login">体验教师与学生演示 →</button>' : ""}${state.config?.setupRequired && tab !== "setup" ? '<p><button data-action="auth-tab" data-tab="setup">首次使用 · 设置 Master 账户</button></p>' : ""}${tab === "setup" ? '<button data-action="auth-tab" data-tab="teacher">返回登录</button>' : ""}</div><p class="privacy-note">${icon("shield")} 学生只需浏览器，无需安装客户端。请妥善保管账号与密码。<br>课程与班级由老师设置，历史成绩和错题跟随账号保存。</p></div></section></div>`;
 }
 function examUrl(taskId) {
   const url = new URL("/", location.origin);
@@ -1438,6 +2070,11 @@ function completeExam(a) {
   }
   closeModal();
   const task = state.attempt.task;
+  if (!task.practice) {
+    examCompletedHere.add(task.id);
+    examAlertItems = examAlertItems.filter((t) => t.id !== task.id);
+    examPanelOpen = false;
+  }
   state.attempt = null;
   state.examResult = { attempt: a, task };
   clearTimeout(saveTimer);
@@ -1446,7 +2083,10 @@ function completeExam(a) {
   if (task.practice) {
     sessionStorage.removeItem("lexiclass-practice");
     loadPractice().catch(() => {});
-  } else load().catch(() => {});
+  } else {
+    receiveExamAlerts({ exams: examAlertItems }, state.user.id);
+    load().catch(() => {});
+  }
   window.scrollTo(0, 0);
 }
 async function submitExam() {
@@ -1523,6 +2163,7 @@ async function navigate(view) {
     search: "",
   };
   state.resultTaskId = null;
+  if (view === "results") state.report = newReport();
   if (view === "practice") {
     state.practiceData = null;
     state.practiceError = null;
@@ -1556,6 +2197,159 @@ document.addEventListener("click", async (e) => {
   if (!b) return;
   const action = b.dataset.action;
   try {
+    if (action === "alerts-open") {
+      if (state.attempt && !state.attempt.task.practice) {
+        toast("请先完成当前考试，交卷后可查看其他考试安排。");
+        return;
+      }
+      if (!visibleExamAlerts().length) {
+        toast("目前没有等待参加的考试。");
+        return;
+      }
+      examPanelOpen = !examPanelOpen;
+      paintExamAlerts();
+      return;
+    }
+    if (action === "alerts-close") {
+      closeExamAlerts();
+      return;
+    }
+    if (action === "alerts-all") {
+      closeExamAlerts();
+      await navigate("tasks");
+      return;
+    }
+    if (action === "alert-exam") {
+      await enterAlertExam(b.dataset.id);
+      return;
+    }
+    if (action === "font-size") {
+      changeFontSize(b);
+      return;
+    }
+    if (action === "retake-create") {
+      retakeForm(b.dataset.id, b.dataset.student || "");
+      return;
+    }
+    if (action === "roster-class") {
+      state.filter.classId = b.dataset.id;
+      state.filter.search = "";
+      render();
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (action === "roster-root") {
+      state.filter.classId = "all";
+      state.filter.search = "";
+      render();
+      return;
+    }
+    if (action === "library-program") {
+      state.filter.program = b.dataset.key;
+      state.filter.subject = "all";
+      state.filter.group = "all";
+      state.filter.search = "";
+      render();
+      return;
+    }
+    if (action === "library-subject" || action === "learning-subject") {
+      state.filter.subject = b.dataset.key;
+      state.filter.group = "all";
+      state.filter.search = "";
+      state.wordLimit = 60;
+      render();
+      return;
+    }
+    if (action.startsWith("report-")) {
+      const r = state.report,
+        key = b.dataset.key || b.dataset.id;
+      if (action === "report-student") {
+        openStudentReport(key);
+        return;
+      }
+      if (action === "report-root") {
+        state.report = newReport();
+        state.resultTaskId = null;
+        state.filter.program = "all";
+      }
+      if (action === "report-class") {
+        state.report = { ...newReport(), classId: key };
+        state.resultTaskId = null;
+        state.view = "results";
+      }
+      if (action === "report-subject") {
+        r.subject = key;
+        r.group = "all";
+        r.taskId = null;
+        r.band = "all";
+        r.hidden = [];
+        r.examLimit = 12;
+      }
+      if (action === "report-all-subjects") {
+        r.subject = null;
+        r.group = "all";
+        r.taskId = null;
+        r.band = "all";
+        r.hidden = [];
+      }
+      if (action === "report-group") {
+        r.group = key;
+        r.taskId = null;
+        r.band = "all";
+      }
+      if (action === "report-clear-exam") {
+        r.taskId = null;
+        state.resultTaskId = null;
+      }
+      if (action === "report-band") r.band = r.band === key ? "all" : key;
+      if (action === "report-range")
+        r.limit = key === "all" ? "all" : Number(key);
+      if (action === "report-more-exams") r.examLimit += 12;
+      if (action === "report-more-students") r.studentLimit += 48;
+      if (action === "report-series") {
+        r.hidden = r.hidden.includes(key)
+          ? r.hidden.filter((s) => s !== key)
+          : [...r.hidden, key];
+      }
+      if (action === "report-cell") {
+        const person = state.students.find((s) => s.id === b.dataset.student);
+        const rows = reportRows({ group: false, task: false }).filter(
+          (x) =>
+            x.studentId === person?.id &&
+            (x.groups.includes(key) ||
+              (key === "未标注分组" && !x.groups.length)),
+        );
+        modal(
+          `${person?.name || "学生"} · ${learningLabel(key)}`,
+          `${clsName(r.classId)} · ${nameSubject(r.subject)}`,
+          reportMetricsView(rows) + reportExamCards(rows, 100),
+          `<button class="btn btn-light" data-action="close-modal">关闭</button><button class="btn btn-primary" data-action="report-student" data-id="${person?.id}">查看全科学习画像</button>`,
+          true,
+        );
+        return;
+      }
+      if (action === "report-exam") {
+        if (r.studentId) {
+          const row = reportData().find(
+            (x) => x.taskId === key && x.studentId === r.studentId,
+          );
+          if (row?.result) {
+            modal(
+              `${row.name} · ${row.score} 分`,
+              row.taskTitle,
+              timingSummary(row) + resultBody(row.result),
+              "",
+              true,
+            );
+          } else toast("这次考试尚未提交，可以在考试记录中查看状态。");
+          return;
+        }
+        r.taskId = key;
+      }
+      closeModal();
+      render();
+      return;
+    }
     if (action.startsWith("grade-")) {
       const a = state.analytics;
       if (action === "grade-reset")
@@ -1566,29 +2360,21 @@ document.addEventListener("click", async (e) => {
           classId: "all",
           band: "all",
         };
-      if (action === "grade-band") a.band = b.dataset.band;
+      if (action === "grade-band") a.band = b.dataset.band || b.dataset.key;
       if (action === "grade-group") {
-        a.group =
-          b.dataset.group === "未标注周次 / 单元"
-            ? "ungrouped"
-            : b.dataset.group;
+        a.group = ["未标注周次 / 单元", "未标注分组"].includes(
+          b.dataset.group || b.dataset.key,
+        )
+          ? "ungrouped"
+          : b.dataset.group || b.dataset.key;
         a.band = "all";
       }
       if (action === "grade-class") {
-        a.classId = b.dataset.id;
+        a.classId = b.dataset.id || b.dataset.key;
         a.band = "all";
       }
       if (action === "grade-student") {
-        const rows = gradeData().rows.filter(
-          (r) =>
-            r.studentId === b.dataset.id &&
-            (a.band === "all" || scoreBand(r) === a.band),
-        );
-        modal(
-          `${rows[0]?.name || "学生"} · 考试记录`,
-          "当前项目、科目、周次及班级筛选范围",
-          `<div class="table-wrap"><table><thead><tr><th>考试</th><th>周次</th><th>成绩 / 状态</th><th>用时</th><th>答题</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.taskTitle)}</td><td>${esc(r.groups.join("、") || "未标注")}</td><td>${r.score ?? ({ pending: "待完成", missing: "未提交", in_progress: "答题中" }[r.state] || "—")}</td><td>${formatElapsed(r.elapsedSeconds)}</td><td>${r.result ? `<button class="btn btn-light btn-sm" data-action="result-detail" data-task="${esc(r.taskId)}" data-student="${esc(r.studentId)}">逐题详情</button>` : "—"}</td></tr>`).join("")}</tbody></table></div>`,
-        );
+        openStudentReport(b.dataset.id || b.dataset.key);
         return;
       }
       $("#main-view").innerHTML = content();
@@ -1771,6 +2557,14 @@ document.addEventListener("click", async (e) => {
     if (action === "task-results") {
       state.view = "results";
       state.resultTaskId = b.dataset.id;
+      const task = state.tasks.find((t) => t.id === b.dataset.id),
+        cls = state.classes.find((c) => task?.classIds.includes(c.id));
+      state.report = {
+        ...newReport(),
+        classId: cls?.id || null,
+        subject: task && cls ? taskSubjectForClass(task, cls) : null,
+        taskId: b.dataset.id,
+      };
       state.filter = {
         program: "all",
         classId: "all",
@@ -2002,7 +2796,7 @@ document.addEventListener("click", async (e) => {
       modal(
         "提交本次听写",
         `答题人：${state.user.name}`,
-        `<p style="font-size:13px;color:#647269">你已完成 ${count} / ${state.attempt.questions.length} 题。提交后不能修改，${count < state.attempt.questions.length ? "未作答的题目将计为错误并收入错题本。" : "系统会立即评分并自动整理错题。"}</p>`,
+        `<p style="font-size:0.88rem;color:#647269">你已完成 ${count} / ${state.attempt.questions.length} 题。提交后不能修改，${count < state.attempt.questions.length ? "未作答的题目将计为错误并收入错题本。" : "系统会立即评分并自动整理错题。"}</p>`,
         `<button class="btn btn-light" data-action="close-modal">继续检查</button><button class="btn btn-primary" data-action="submit-exam">确认提交</button>`,
       );
       return;
@@ -2095,6 +2889,21 @@ document.addEventListener("submit", async (e) => {
     form.querySelector("[type=submit]");
   if (submit) submit.disabled = true;
   try {
+    if (form.id === "retake-form") {
+      const taskId = data.taskId;
+      const result = await post(`/api/tasks/${taskId}/retakes`, {
+        studentIds: new FormData(form).getAll("studentIds"),
+        opensAt: beijingISO(data.opensAt),
+        closesAt: beijingISO(data.closesAt),
+        duration: Number(data.duration),
+      });
+      closeModal();
+      await load();
+      state.view = "tasks";
+      render();
+      shareExams([result.task]);
+      toast("补考已安排，指定学生会自动收到提醒。");
+    }
     if (form.id === "practice-form") {
       const settings = practiceFormSettings();
       enterPractice(
@@ -2349,6 +3158,10 @@ document.addEventListener("beforeinput", (e) => {
 });
 document.addEventListener("change", (e) => {
   const el = e.target;
+  if (el.hasAttribute("data-report-student")) {
+    if (el.value) openStudentReport(el.value);
+    return;
+  }
   if (el.dataset.practiceSetting) {
     practiceFormSettings();
     state.practiceWrongLimit = 20;
@@ -2387,7 +3200,10 @@ document.addEventListener("change", (e) => {
     state.wordLimit = 60;
     if (["program", "subject"].includes(el.dataset.filter))
       state.filter.group = "all";
-    if (el.dataset.filter === "program") state.filter.classId = "all";
+    if (el.dataset.filter === "program") {
+      state.filter.classId = "all";
+      if (state.view === "words") state.filter.subject = "all";
+    }
     $("#main-view").innerHTML = content();
   }
   if (el.dataset.change === "schedule") {
@@ -2415,6 +3231,15 @@ document.addEventListener(
   true,
 );
 document.addEventListener("keydown", (e) => {
+  if (
+    (e.key === "Enter" || e.key === " ") &&
+    e.target.matches("[data-chart-point]")
+  ) {
+    e.preventDefault();
+    e.target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return;
+  }
+
   if (e.key === "Escape" && modalOpen) closeModal();
   if ((e.key === "Enter" || e.key === " ") && e.target.matches(".class-card")) {
     e.preventDefault();
