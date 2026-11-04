@@ -860,3 +860,13 @@ h1 span {
     display: none;
   }
 }
+
+.font-next {
+  display: none;
+  white-space: nowrap;
+  color: #29405c;
+  text-underline-offset: 4px;
+}
+body[data-theme="academy"] .font-next {
+  display: block;
+}

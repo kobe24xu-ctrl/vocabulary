@@ -1,0 +1,27 @@
+[
+  {
+    "font": "wenkai",
+    "source_sha256": "2d73eea94ad808999d90c0000c239a84a33b09d4bc6ab6c5b8bbf1eda8a7fc8b",
+    "preview_bytes": 79476
+  },
+  {
+    "font": "xihei",
+    "source_sha256": "80415d3666d9f51cf42ecf82c5350488e6b3f282ab46a3b90dcaa5e212564ecc",
+    "preview_bytes": 42204
+  },
+  {
+    "font": "xiaowei",
+    "source_sha256": "a42b620140f493db42f741351dfbf343c0936d58588ee8004b8b2a218d997ff1",
+    "preview_bytes": 109392
+  },
+  {
+    "font": "smiley",
+    "source_sha256": "b447d7e781f08bc95c4c9f23ba71ed2b8ebb639aa7184485c71c4ca5afcd25c4",
+    "preview_bytes": 45740
+  },
+  {
+    "font": "kuaile",
+    "source_sha256": "812a6fc1fe54b6d73a419245c32dfeba8aa33104d5be90d1cf6af082007cb71d",
+    "preview_bytes": 34936
+  }
+]
