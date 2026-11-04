@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(join(root, path), "utf8");
 let app = read("public/app.js")
+  .replace(/^import[^;]*from "\.\/analytics\.js";\n/m, "")
+  .replace(/^import[\s\S]*?from "\.\/scheduling\.js";\n/m, "")
   .replace(/^import .*speech\.js.*;\n/m, "")
   .replace(/^import\s*\{[\s\S]*?\}\s*from\s*["']\.\/word-banks\.js["'];\n/m, "")
   .replaceAll('"lexiclass-student-entry"', '"lexiclass-offline-entry"')
@@ -31,7 +33,16 @@ app = app
   )
   .replaceAll("复制考试链接", "复制本机演示链接")
   .replaceAll("用于以后在任何电脑登录", "仅用于本机演示，请勿使用真实密码");
+const scheduling = read("public/scheduling.js")
+  .replaceAll("export const ", "const ")
+  .replaceAll("export function ", "function ");
 const shared =
+  read("public/analytics.js")
+    .replaceAll("export const ", "const ")
+    .replaceAll("export function ", "function ") +
+  "\n" +
+  scheduling +
+  "\n" +
   read("public/word-banks.js")
     .replaceAll("export const ", "const ")
     .replaceAll("export function ", "function ") +

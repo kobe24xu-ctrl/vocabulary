@@ -72,7 +72,7 @@ try {
   await page.reload();
   await page.getByRole("heading", { name: "教学概览", exact: true }).waitFor();
   await page.getByRole("button", { name: "发布听写", exact: true }).click();
-  await page.locator("#task-form [name=title]").fill("本机试用 · 经济学小测");
+  assert.equal(await page.locator("#task-form [name=title]").count(), 0);
   await page
     .locator("#task-form [name=classId]")
     .selectOption({ label: "UNSW 商科 A 班 · UNSW" });
@@ -92,7 +92,20 @@ try {
     .filter({ hasText: "陈思远" })
     .locator("input")
     .check();
+  assert.deepEqual(
+    await page
+      .locator("#task-form")
+      .evaluate((f) =>
+        [...f.querySelectorAll(":invalid")].map((n) => ({
+          name: n.name,
+          value: n.value,
+          message: n.validationMessage,
+        })),
+      ),
+    [],
+  );
   await page.getByRole("button", { name: "确认发布", exact: true }).click();
+  assert.deepEqual(errors, []);
   await page
     .getByRole("heading", { name: "考试已准备好，分享给学生吧" })
     .waitFor();
@@ -148,6 +161,7 @@ try {
   await page.getByRole("button", { name: "回到教师端", exact: true }).click();
   await page.getByRole("heading", { name: "教学概览", exact: true }).waitFor();
   await page.locator(".nav [data-view=tasks]").click();
+  await page.getByRole("button", { name: "全部展开", exact: true }).click();
   await page.locator(`[data-action=task-results][data-id="${taskId}"]`).click();
   await page.getByRole("heading", { name: "成绩分析", exact: true }).waitFor();
   const row = page.locator("tbody tr").filter({ hasText: "陈思远" });

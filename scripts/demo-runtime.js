@@ -55,6 +55,8 @@
   const taskView = ({ questions, ...task }) => ({
     ...task,
     questionCount: questions.length,
+    wordIds: questions.map((q) => q.wordId),
+    wordGroups: [...new Set(questions.flatMap((q) => q.groups || []))],
   });
   const attemptFor = (tid, sid) =>
     db.attempts.find((a) => a.taskId === tid && a.studentId === sid);
@@ -129,6 +131,16 @@
     return { ...info(student), invite };
   }
   function taskCreate(raw) {
+    if (raw.autoTitle || !raw.title)
+      raw = {
+        ...raw,
+        title: automaticTaskTitle(
+          raw.program,
+          raw.subject,
+          raw.wordGroup,
+          SUBJECT_NAMES,
+        ),
+      };
     if (!raw.title?.trim()) reject("请填写任务名称。");
     if (!PROGRAMS.includes(raw.program) || !SUBJECTS.includes(raw.subject))
       reject("请选择有效课程项目和科目。");

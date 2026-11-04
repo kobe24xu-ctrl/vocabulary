@@ -1,8 +1,10 @@
-const CACHE = "lexiclass-shell-v25";
+const CACHE = "lexiclass-shell-v27";
 const SHELL = [
   "/",
   "/styles.css",
   "/app.js",
+  "/scheduling.js",
+  "/analytics.js",
   "/word-banks.js",
   "/icon.svg",
   "/icon-192.png",

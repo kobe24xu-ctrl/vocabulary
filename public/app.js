@@ -1,4 +1,16 @@
 import {
+  enrichGradeRows,
+  gradeAverage,
+  summarizeGrades,
+  scoreBand,
+} from "./analytics.js";
+import {
+  beijingInput,
+  beijingISO,
+  automaticTaskTitle,
+  planSchedule,
+} from "./scheduling.js";
+import {
   wordAvailableFor,
   sharedWordSubjects,
   wordAvailableToClass,
@@ -51,7 +63,11 @@ const icon = (name, cls = "") =>
 const subjectIcon = (s) =>
   s === "Economics"
     ? "economy"
-    : s === "Mathematics"
+    : [
+          "Mathematics",
+          "Integrated Mathematics",
+          "Technical Mathematics",
+        ].includes(s)
       ? "math"
       : s === "Academic English"
         ? "book"
@@ -63,6 +79,17 @@ const state = {
   config: null,
   view: "dashboard",
   tasks: [],
+  analytics: {
+    program: "all",
+    subject: "all",
+    group: "all",
+    classId: "all",
+    band: "all",
+  },
+  taskFolders: {},
+  scheduleDates: new Set(),
+  scheduleOverrides: {},
+  scheduleMonth: "",
   students: [],
   classes: [],
   words: [],
@@ -246,21 +273,97 @@ function recentTask(t) {
   const [label, color] = statusOf(t);
   return `<div class="task-row"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div><div class="task-detail"><div class="task-title">${esc(t.title)}</div><div class="task-meta"><span>${esc(programShort(t.program))} · ${esc(nameSubject(t.subject))}</span><span>·</span><span>${t.questionCount} 题 / ${t.duration} 分钟</span><span>·</span><span>${t.classIds.map(clsName).map(esc).join("、")}</span></div></div><div class="task-side">${badge(label, color, true)}<p>${t.submitted} / ${t.studentCount} 已提交</p></div><button class="btn btn-quiet" data-action="task-results" data-id="${t.id}" title="查看成绩">${icon("chevron")}</button></div>`;
 }
+function gradeData() {
+  const a = state.analytics;
+  const all = enrichGradeRows(
+    state.results,
+    state.tasks,
+    state.words,
+    state.classes,
+  );
+  const scope = all.filter(
+    (r) =>
+      (a.program === "all" || r.program === a.program) &&
+      (a.subject === "all" || r.subject === a.subject) &&
+      (a.classId === "all" || r.classId === a.classId),
+  );
+  const rows = scope.filter(
+    (r) =>
+      a.group === "all" ||
+      (a.group === "ungrouped" ? !r.groups.length : r.groups.includes(a.group)),
+  );
+  return { all, scope, rows };
+}
 function dashboard() {
-  const submitted = state.results.filter((r) => r.score !== null),
-    active = state.tasks.filter((t) => statusOf(t)[0] === "进行中");
-  const points = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(now());
-    d.setDate(d.getDate() - 6 + i);
-    return {
-      label: d.toLocaleDateString("zh-CN", { weekday: "short" }),
-      count: submitted.filter(
-        (r) => new Date(r.submittedAt).toDateString() === d.toDateString(),
-      ).length,
-    };
-  });
-  const max = Math.max(...points.map((p) => p.count), 1);
-  return `${heading("教学概览", "让每一次听写，都成为看得见的进步。", `<button class="btn btn-light" data-action="nav" data-view="results">${icon("chart")}查看成绩</button><button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}<section class="welcome-banner"><div class="welcome-copy"><div class="eyebrow">GROW A LITTLE, EVERY DAY</div><h2>${esc(state.user.name)}，欢迎回到课堂。</h2><p>把词汇放进真实的学科语境，让学生从「记得」走向「理解」。<br>今天的学习，也从一个好问题开始。</p><div class="banner-pill"><span></span> ${state.classes.length} 个班级，${state.students.length} 位学生，与你一起进步</div></div>${art()}</section><section class="stats-grid">${stat("学生总数", state.students.length, "位", "users", `分布于 <strong>${state.classes.length}</strong> 个班级`)}${stat("进行中的听写", active.length, "份", "clipboard", `共发布 <strong>${state.tasks.length}</strong> 份任务`, "blue")}${stat("班级平均成绩", mean(submitted), "分", "chart", submitted.length ? `基于 <strong>${submitted.length}</strong> 份有效提交` : "完成首次听写后展示", "gold")}${stat("场景词汇", state.words.length, "个", "book", `覆盖 <strong>${state.config.subjects.length}</strong> 门学科`, "purple")}</section><section class="content-grid"><div class="panel"><div class="panel-header"><div><h2>近期听写任务</h2><p>每一份练习，都是知识的积累</p></div><button class="section-link" data-action="nav" data-view="tasks">全部任务 ${icon("arrow")}</button></div>${state.tasks.length ? state.tasks.slice(0, 4).map(recentTask).join("") : empty("发布你的第一份听写", "从课程词库选择词汇，分配给班级或指定学生。", `<button class="btn btn-light" data-action="create-task">${icon("plus")}新建任务</button>`)}</div><div class="panel"><div class="panel-header"><div><h2>本周学习足迹</h2><p>近 7 天的听写提交记录</p></div>${badge("最近 7 天", "gray")}</div><div class="chart-body"><div class="chart-summary">${points.reduce((a, p) => a + p.count, 0)}<small>份已完成练习</small></div><div class="chart">${points.map((p) => `<div class="chart-column"><span class="chart-value">${p.count || ""}</span><div class="chart-bar" style="height:${Math.max(2, (p.count / max) * 95)}px"></div></div>`).join("")}</div><div class="chart-labels">${points.map((p) => `<span>${p.label}</span>`).join("")}</div></div></div></section><section class="classes-strip"><div class="panel-header" style="padding:0 0 16px"><div><h2>全部班级 <small class="muted">&nbsp; ${state.classes.length}</small></h2></div><button class="section-link" data-action="nav" data-view="classes">管理全部 ${icon("arrow")}</button></div><div class="class-cards">${state.classes.length ? classCards(state.classes.slice(0, 3)) : empty("先创建一个班级", "按项目和班级组织教学。", `<button class="btn btn-light" data-action="create-class">创建班级</button>`)}</div></section>`;
+  const a = state.analytics,
+    { all, scope, rows } = gradeData();
+  const projectRows = all.filter(
+    (r) => a.program === "all" || r.program === a.program,
+  );
+  const subjects = [
+    ...new Set([
+      ...projectRows.map((r) => r.subject),
+      ...state.classes
+        .filter((c) => a.program === "all" || c.program === a.program)
+        .flatMap((c) => (c.courses || []).map((x) => x.subject)),
+    ]),
+  ];
+  const groups = [...new Set(scope.flatMap((r) => r.groups))].sort((x, y) =>
+    x.localeCompare(y, "zh-CN", { numeric: true }),
+  );
+  const done = rows.filter(
+    (r) => r.state === "submitted" && Number.isFinite(r.score),
+  );
+  const bands = [
+    ["high", "80–100 分"],
+    ["middle", "60–79 分"],
+    ["low", "低于 60 分"],
+    ["pending", "尚未提交"],
+  ];
+  const detail = rows.filter(
+    (r) => a.band === "all" || scoreBand(r) === a.band,
+  );
+  const students = summarizeGrades(detail, "studentId").sort(
+    (x, y) => (x.average ?? -1) - (y.average ?? -1),
+  );
+  const weekly = summarizeGrades(scope, "groups").sort((x, y) =>
+    x.value.localeCompare(y.value, "zh-CN", { numeric: true }),
+  );
+  const classStats = summarizeGrades(rows, "classId");
+  return `${heading("教学概览", "按项目、科目与教学周追踪成绩，点击图表查看学生明细。", `<a class="btn btn-light" href="/design-options.html" target="_blank" rel="noopener">五种界面预览 ↗</a><button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}
+  <section class="panel grade-filters"><label>课程项目<select data-grade="program" aria-label="成绩项目">${option("all", "全部项目", a.program)}${state.config.programs.map((p) => option(p, p, a.program)).join("")}</select></label><label>科目<select data-grade="subject" aria-label="成绩科目">${option("all", "全部科目", a.subject)}${subjects.map((s) => option(s, nameSubject(s), a.subject)).join("")}</select></label><label>周次 / Topic<select data-grade="group" aria-label="成绩周次">${option("all", "全部周次 / Topic", a.group)}${groups.map((g) => option(g, g, a.group)).join("")}${scope.some((r) => !r.groups.length) ? option("ungrouped", "未标注周次 / 单元", a.group) : ""}</select></label><label>班级<select data-grade="classId" aria-label="成绩班级">${option("all", "全部班级", a.classId)}${state.classes
+    .filter(
+      (c) =>
+        (a.program === "all" || c.program === a.program) &&
+        (a.subject === "all" ||
+          (c.courses || []).some((x) => x.subject === a.subject)),
+    )
+    .map((c) => option(c.id, c.name, a.classId))
+    .join(
+      "",
+    )}</select></label><button class="btn btn-light" data-action="grade-reset">重置</button></section>
+  <section class="stats-grid">${stat("平均成绩", gradeAverage(rows), "分", "chart", `基于 ${done.length} 份有效提交`, "blue")}${stat("提交率", rows.length ? Math.round((done.length / rows.length) * 100) : 0, "%", "check", `${done.length} / ${rows.length} 份应交练习`)}${stat("应考学生", new Set(rows.map((r) => r.studentId)).size, "位", "users", "按当前筛选范围统计")}${stat("达到 80 分", done.filter((r) => r.score >= 80).length, "份", "spark", "未交卷不计入平均分", "purple")}</section>
+  <section class="grade-charts"><div class="panel"><div class="panel-header"><div><h2>周次成绩趋势</h2><p>点击柱形筛选周次 · 柱高为平均分</p></div></div><div class="grade-week-chart" role="group" aria-label="周次成绩趋势">${weekly.map((g) => `<button class="grade-week ${a.group === g.value ? "selected" : ""}" data-action="grade-group" data-group="${esc(g.value)}" aria-pressed="${a.group === g.value}" title="${esc(g.value)}：${g.average ?? "暂无"}分，${g.submitted}/${g.total}份已交"><b>${g.average ?? "—"}</b><span class="grade-track"><i style="height:${Math.max(2, g.average ?? 0)}%"></i></span><small>${esc(g.value.replace("Week ", "W"))}</small><em>${g.submitted}/${g.total} 已交</em></button>`).join("") || '<p class="muted">尚无考试记录</p>'}</div></div>
+  <div class="panel"><div class="panel-header"><div><h2>成绩分布</h2><p>点击分数段查看对应学生</p></div></div><div class="grade-distribution">${bands
+    .map(([key, label]) => {
+      const n = rows.filter((r) => scoreBand(r) === key).length;
+      return `<button data-action="grade-band" data-band="${key}" class="grade-band ${a.band === key ? "selected" : ""}" aria-pressed="${a.band === key}"><span>${label}</span><span class="grade-band-track"><i style="width:${rows.length ? (n / rows.length) * 100 : 0}%"></i></span><b>${n}</b></button>`;
+    })
+    .join(
+      "",
+    )}<button class="btn btn-quiet" data-action="grade-band" data-band="all">显示全部分数段</button></div></div></section>
+  <section class="panel grade-class-panel"><div class="panel-header"><div><h2>班级对比</h2><p>点击班级进一步筛选</p></div></div><div class="grade-class-chart">${classStats.map((c) => `<button data-action="grade-class" data-id="${esc(c.value)}" title="查看${esc(clsName(c.value))}"><span>${esc(clsName(c.value))}</span><i style="width:${Math.max(1, c.average ?? 0)}%"></i><b>${c.average ?? "—"} 分</b><small>${c.submitted}/${c.total} 已交</small></button>`).join("") || '<p class="muted">当前范围没有考试</p>'}</div></section>
+  <section class="panel"><div class="panel-header"><div><h2>学生成绩明细 ${a.band !== "all" ? `· ${bands.find((b) => b[0] === a.band)?.[1] || ""}` : ""}</h2><p>点击学生查看本范围内每次听写、分数与用时</p></div><span class="badge gray">${students.length} 位学生</span></div><div class="table-wrap"><table><thead><tr><th>姓名</th><th>班级</th><th>平均分</th><th>已交 / 应交</th><th>最低 / 最高分</th><th>查看</th></tr></thead><tbody>${students
+    .map((s) => {
+      const scores = s.rows
+        .filter((r) => r.state === "submitted" && Number.isFinite(r.score))
+        .map((r) => r.score);
+      const r = s.rows[0];
+      return `<tr><td><button class="section-link" data-action="grade-student" data-id="${esc(s.value)}">${esc(r.name)}</button></td><td>${esc(r.className)}</td><td><strong>${s.average ?? "—"}</strong></td><td>${s.submitted} / ${s.total}</td><td>${scores.length ? `${Math.min(...scores)} / ${Math.max(...scores)}` : "—"}</td><td><button class="btn btn-light btn-sm" data-action="grade-student" data-id="${esc(s.value)}">查看考试</button></td></tr>`;
+    })
+    .join(
+      "",
+    )}</tbody></table></div>${!students.length ? empty("暂无对应成绩", "调整筛选，或等待学生参加考试。") : ""}</section><p class="privacy-note">周次来自考试词汇分组；跨周考试在涉及的各周展示同一份成绩，总体统计不重复。无法识别周次的历史考试归入“未标注周次 / 单元”。尚未提交包括待开放、待完成、答题中和逾期未交。</p>`;
 }
 function option(value, label, current) {
   return `<option value="${esc(value)}" ${current === value ? "selected" : ""}>${esc(label)}</option>`;
@@ -285,26 +388,66 @@ function filters({
       : ""
   }${subject ? `<select data-filter="subject" aria-label="按科目筛选">${option("all", "全部科目", state.filter.subject)}${subjectOptions.map((s) => option(s, nameSubject(s), state.filter.subject)).join("")}</select>` : ""}</div>`;
 }
+const taskSubjectForClass = (t, c) =>
+  t.program === "NCUK 国际预科" && t.subject === "Mathematics"
+    ? c?.courses?.find((x) =>
+        ["Integrated Mathematics", "Technical Mathematics"].includes(x.subject),
+      )?.subject || t.subject
+    : t.subject;
+
 function filteredTasks() {
   return state.tasks.filter(
     (t) =>
       (state.filter.program === "all" || t.program === state.filter.program) &&
       (state.filter.classId === "all" ||
         t.classIds.includes(state.filter.classId)) &&
-      (state.filter.subject === "all" || t.subject === state.filter.subject) &&
+      (state.filter.subject === "all" ||
+        t.subject === state.filter.subject ||
+        t.classIds.some(
+          (cid) =>
+            (state.filter.classId === "all" || cid === state.filter.classId) &&
+            taskSubjectForClass(
+              t,
+              state.classes.find((c) => c.id === cid),
+            ) === state.filter.subject,
+        )) &&
       (state.filter.search === "" ||
         t.title.toLowerCase().includes(state.filter.search.toLowerCase())),
   );
 }
 function tasksView() {
-  return `${heading("听写任务", "在真实语境中练习，按班级和学生精准布置。", `<button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}${filters({ classes: true, subject: true, search: true })}<div class="cards-grid">${filteredTasks()
-    .map((t) => {
-      const [label, color] = statusOf(t);
-      return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(t.program)} · ${esc(nameSubject(t.subject))}<br>${t.classIds.map(clsName).map(esc).join("、")} · ${t.audience === "all" ? "所选班级全体" : `${t.audience.length} 位指定学生`}</p><div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span><span>${esc(taskModeName(t))}</span></div><p>${icon("clock")} ${date(t.opensAt)} — ${date(t.closesAt)}</p><div class="progress-track" style="width:100%;margin:15px 0"><div class="progress-fill" style="width:${t.studentCount ? (t.submitted / t.studentCount) * 100 : 0}%"></div></div><div class="assignment-bottom"><span>${t.submitted} / ${t.studentCount} 人已提交</span><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">考试链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">查看成绩 ${icon("arrow")}</button><button class="btn btn-danger btn-sm" data-action="delete-task" data-id="${t.id}">删除考试</button></div></div></article>`;
+  const tasks = filteredTasks();
+  const classes = state.classes
+    .filter((c) => tasks.some((t) => t.classIds.includes(c.id)))
+    .sort(
+      (a, b) =>
+        a.program.localeCompare(b.program) ||
+        a.name.localeCompare(b.name, "zh-CN", { numeric: true }),
+    );
+  const tree = classes
+    .map((c) => {
+      const rows = tasks.filter((t) => t.classIds.includes(c.id));
+      const subjects = [
+        ...new Set(rows.map((t) => taskSubjectForClass(t, c))),
+      ].sort((a, b) => nameSubject(a).localeCompare(nameSubject(b), "zh-CN"));
+      const classKey = `class:${c.id}`;
+      return `<details class="task-class-folder" data-task-folder="${classKey}" ${(state.taskFolders[classKey] ?? state.filter.classId !== "all") ? "open" : ""}><summary><span>${esc(c.name)}<small>${esc(c.program)}</small></span><span>${subjects.length} 门科目 · ${rows.length} 次听写</span></summary>${subjects
+        .map((subject) => {
+          const key = `${c.id}:${subject}`,
+            entries = rows
+              .filter((t) => taskSubjectForClass(t, c) === subject)
+              .sort((a, b) => b.opensAt - a.opensAt);
+          return `<details class="task-subject-folder" data-task-folder="${key}" ${(state.taskFolders[key] ?? state.filter.subject !== "all") ? "open" : ""}><summary><strong>${esc(nameSubject(subject))}</strong><span>${entries.length} 次听写</span></summary><div class="task-list-head"><span>听写名称 / 题型</span><span>开放 / 截止</span><span>提交</span><span>状态</span><span>操作</span></div>${entries
+            .map((t) => {
+              const [label, color] = statusOf(t);
+              return `<article class="task-table-row"><div><strong>${esc(t.title)}</strong><small>${t.questionCount} 题 · ${t.duration} 分钟 · ${esc(taskModeName(t))}</small></div><div>${date(t.opensAt)}<small>至 ${date(t.closesAt)}</small></div><div>${t.submitted} / ${t.studentCount}</div><div>${badge(label, color, true)}</div><div class="task-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${t.id}">链接</button><button class="btn btn-light btn-sm" data-action="task-results" data-id="${t.id}">成绩</button><button class="btn btn-danger btn-sm" data-action="delete-task" data-id="${t.id}">删除</button></div></article>`;
+            })
+            .join("")}</details>`;
+        })
+        .join("")}</details>`;
     })
-    .join(
-      "",
-    )}</div>${!filteredTasks().length ? empty("还没有匹配的任务", "调整筛选条件，或发布一份新的听写任务。") : ""}`;
+    .join("");
+  return `${heading("听写任务", "按班级与科目归档，展开查看具体考试。", `<button class="btn btn-light" data-action="task-folders" data-open="false">全部收起</button><button class="btn btn-light" data-action="task-folders" data-open="true">全部展开</button><button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}${filters({ classes: true, subject: true, search: true })}<div class="task-tree">${tree || empty("没有匹配的任务", "可调整筛选条件，或发布新的听写。")}</div>`;
 }
 function classesView() {
   const classes = state.classes.filter(
@@ -371,7 +514,12 @@ function wordsView() {
     )}</div>${words.length > (state.wordLimit || 60) ? `<button class="btn btn-light" data-action="more-words">加载更多词汇</button>` : ""}${!words.length ? empty("还没有匹配的词汇", "添加本学科词汇和场景句，或调整筛选条件。") : ""}`;
 }
 function visibleResults() {
-  return state.results.filter(
+  return enrichGradeRows(
+    state.results,
+    state.tasks,
+    state.words,
+    state.classes,
+  ).filter(
     (r) =>
       (!state.resultTaskId || r.taskId === state.resultTaskId) &&
       (state.filter.program === "all" || r.program === state.filter.program) &&
@@ -742,7 +890,53 @@ function examEntryView() {
     return `${heading("考试入口", "使用自己的学生账号参加老师安排的考试。")}${empty("未找到分配给你的考试", "请核对当前账号是否属于老师指定的班级，或联系老师确认链接。", `<button class="btn btn-light" data-action="nav" data-view="dashboard">返回我的学习</button>`)}`;
   return `<div class="exam-layout">${heading("考试入口", "无需安装，准备好后即可在网页中开始。")}<div class="exam-intro"><span class="eyebrow">YOUR CLASSROOM, CONNECTED</span><h2>${esc(t.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p><div class="detail-grid"><div><strong>${t.questionCount}</strong><small>道场景题</small></div><div><strong>${t.duration}</strong><small>分钟限时</small></div><div><strong>${esc(nameSubject(t.subject))}</strong><small>${esc(taskModeName(t))}</small></div></div><p class="muted">开放时间：${date(t.opensAt, true)}<br>截止时间：${date(t.closesAt, true)}</p><div class="alert" style="margin-top:20px">开始后计时不可暂停，刷新可继续；到时按已保存答案自动交卷。成绩、历史记录和错题保存在你自己的账号中。</div>${studyButton(t, false)}${t.attempt?.submittedAt ? `<button class="btn btn-primary" data-action="student-result" data-id="${t.id}">已完成 · 查看 ${t.attempt.score} 分的答题结果 ${icon("arrow")}</button>` : `<button class="btn btn-primary" data-action="start-task" data-id="${t.id}" ${t.opensAt > now() || t.closesAt <= now() ? "disabled" : ""}>${t.opensAt > now() ? "等待考试开放" : t.closesAt <= now() ? "考试已截止" : t.attempt ? "继续考试" : "我已准备好，开始考试"} ${icon("arrow")}</button>`}<button class="btn btn-quiet" data-action="nav" data-view="dashboard">返回我的学习</button></div></div>`;
 }
+function currentTaskPlan() {
+  const form = $("#task-form");
+  const groups = [...form.elements.wordGroup.options]
+    .map((o) => o.value)
+    .filter((g) => g !== "all");
+  return planSchedule({
+    opensAt: form.elements.opensAt.value,
+    closesAt: form.elements.closesAt.value,
+    dates: [...state.scheduleDates],
+    groups,
+    startGroup: form.elements.wordGroup.value,
+    overrides: state.scheduleOverrides,
+  });
+}
+function renderTaskCalendar() {
+  const form = $("#task-form"),
+    node = $("#task-calendar"),
+    preview = $("#task-schedule-preview");
+  if (!form || !node) return;
+  const base = form.elements.opensAt.value.slice(0, 10);
+  state.scheduleMonth ||= base.slice(0, 7);
+  const [year, month] = state.scheduleMonth.split("-").map(Number),
+    offset = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7,
+    days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  node.innerHTML = `<div class="calendar-nav"><button type="button" class="btn btn-quiet" data-action="schedule-month" data-delta="-1">← 上月</button><strong>${year}年 ${month}月</strong><button type="button" class="btn btn-quiet" data-action="schedule-month" data-delta="1">下月 →</button></div><div class="schedule-calendar">${["一", "二", "三", "四", "五", "六", "日"].map((d) => `<span class="calendar-weekday">${d}</span>`).join("")}${Array.from({ length: offset }, () => "<span></span>").join("")}${Array.from(
+    { length: days },
+    (_, i) => {
+      const date = `${year}-${String(month).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`;
+      return `<button type="button" data-action="schedule-date" data-date="${date}" class="calendar-day ${date === base ? "base-date" : ""} ${state.scheduleDates.has(date) ? "selected" : ""}" aria-pressed="${state.scheduleDates.has(date)}" ${date <= base ? "disabled" : ""}>${i + 1}${date === base ? "<small>首场</small>" : ""}</button>`;
+    },
+  ).join("")}</div>`;
+  try {
+    const plan = currentTaskPlan(),
+      groups = [...form.elements.wordGroup.options].filter(
+        (o) => o.value !== "all",
+      );
+    preview.innerHTML = `<div class="schedule-preview"><div class="schedule-preview-head">发布预览 · ${plan.length} 场 · 北京时间</div>${plan.map((p, i) => `<div class="schedule-preview-row"><strong>${p.date}</strong><span>${form.elements.opensAt.value.slice(11)} 开放</span>${i === 0 ? `<span>${esc(p.group === "all" ? "综合词汇" : p.group)}</span>` : `<select data-schedule-date="${p.date}" aria-label="${p.date}词汇分组">${groups.map((g) => option(g.value, g.textContent, p.group)).join("")}</select>`}</div>`).join("")}</div>`;
+  } catch (error) {
+    preview.innerHTML = `<div class="alert error">${esc(error.message)}</div>`;
+  }
+  taskSummary();
+}
 function createTask() {
+  state.scheduleDates = new Set();
+  state.scheduleOverrides = {};
+  state.scheduleMonth = beijingInput().slice(0, 7);
+
   if (!state.classes.length) {
     toast("请先创建班级并添加学生。");
     createClass();
@@ -758,7 +952,7 @@ function createTask() {
   modal(
     "发布场景听写",
     "先选班级，再选该班科目；默认全班参加，可取消勾选个别人。",
-    `<form id="task-form"><div class="form-grid"><div class="full">${field("任务名称", "title", "text", "例如：经济学 · 市场与价格机制")}</div><label class="form-field full"><span>选择班级</span><select name="classId" data-change="task-class" required>${option("", "请选择班级", initialClass)}${state.classes.map((c) => option(c.id, `${c.name} · ${programShort(c.program)}`, initialClass)).join("")}</select></label><label class="form-field"><span>该班科目</span><select name="subject" data-change="task-words" required disabled><option value="">请先选择班级</option></select></label><label class="form-field"><span>题型</span><select name="questionType" required><option value="fill">填空题 · 手动输入答案</option><option value="choice">选择题 · 五选一（A–E）</option></select></label><label class="form-field"><span>翻译方向</span><select name="mode">${[
+    `<form id="task-form"><div class="form-grid"><div class="full auto-task-title"><span>自动生成听写名称</span><strong id="task-title-preview">选择班级、科目与周次后生成</strong></div><label class="form-field full"><span>选择班级</span><select name="classId" data-change="task-class" required>${option("", "请选择班级", initialClass)}${state.classes.map((c) => option(c.id, `${c.name} · ${programShort(c.program)}`, initialClass)).join("")}</select></label><label class="form-field"><span>该班科目</span><select name="subject" data-change="task-words" required disabled><option value="">请先选择班级</option></select></label><label class="form-field"><span>题型</span><select name="questionType" required><option value="fill">填空题 · 手动输入答案</option><option value="choice">选择题 · 五选一（A–E）</option></select></label><label class="form-field"><span>翻译方向</span><select name="mode">${[
       ["mixed", "双向翻译 · 英中交替"],
       ["en-zh", "英译中 · 理解中文含义"],
       ["zh-en", "中译英 · 掌握英文词汇"],
@@ -766,7 +960,7 @@ function createTask() {
       .map(([v, l]) => option(v, l, "mixed"))
       .join(
         "",
-      )}</select></label>${field("答题时长（分钟，1–180）", "duration", "number", "", true, "15")}<div class="full">${field("按相同时间连续发布几天（1–30）", "repeatDays", "number", "", true, "1")}</div><label class="form-field"><span>开放时间</span><input name="opensAt" type="datetime-local" value="${fmtLocal(Date.now())}" required></label><label class="form-field"><span>截止时间</span><input name="closesAt" type="datetime-local" value="${fmtLocal(Date.now() + 86400000)}" required></label></div><div class="form-section">01 &nbsp; 参加学生 · 默认全选 <button type="button" class="btn btn-quiet" data-action="select-all-students">全选 / 取消全选</button></div><div id="task-students" class="check-list"></div><p class="muted" id="task-audience-count"></p><div class="form-section">02 &nbsp; 场景词汇 <button type="button" class="btn btn-quiet" data-action="select-all-words">全选 / 取消</button></div><label class="form-field"><span>词汇 Topic / 周次 / 单元</span><select name="wordGroup" data-change="task-words" disabled></select><small>每份任务最多 100 个词汇；可按 Topic、周次、单元分批发布。</small></label><div class="check-list" id="task-words"></div><p class="task-summary" id="task-summary"></p><div class="alert" style="margin-top:17px;margin-bottom:0">任务发布后即按预约时间开放。学生开始后计时，截止时间与答题时长先到者为准；超时按服务端已保存答案自动评分。</div></form>`,
+      )}</select></label>${field("答题时长（分钟，1–180）", "duration", "number", "", true, "15")}<label class="form-field"><span>首场开放时间（北京时间）</span><input name="opensAt" data-change="schedule" type="datetime-local" value="${beijingInput()}" required></label><label class="form-field"><span>首场截止时间（北京时间）</span><input name="closesAt" data-change="schedule" type="datetime-local" value="${beijingInput(Date.now() + 86400000)}" required></label></div><div class="form-section">01 &nbsp; 参加学生 · 默认全选 <button type="button" class="btn btn-quiet" data-action="select-all-students">全选 / 取消全选</button></div><div id="task-students" class="check-list"></div><p class="muted" id="task-audience-count"></p><div class="form-section">02 &nbsp; 场景词汇 <button type="button" class="btn btn-quiet" data-action="select-all-words">全选 / 取消</button></div><label class="form-field"><span>词汇 Topic / 周次 / 单元</span><select name="wordGroup" data-change="task-words" disabled></select><small>每份任务最多 100 个词汇；可按 Topic、周次、单元分批发布。</small></label><div class="check-list" id="task-words"></div><p class="task-summary" id="task-summary"></p><div class="form-section">03 &nbsp; 日历安排后续周次 · 可跳过假期</div><p class="muted">首场使用上面选定的词汇。点击后续日期，将按同一开放时刻和相同答题窗口，依次安排后续分组；每批最多30场。</p><div id="task-calendar"></div><div id="task-schedule-preview"></div><div class="alert" style="margin-top:17px;margin-bottom:0">任务发布后即按预约时间开放。学生开始后计时，截止时间与答题时长先到者为准；超时按服务端已保存答案自动评分。</div></form>`,
     `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="task-form">${icon("check")}确认发布</button>`,
     true,
   );
@@ -836,6 +1030,7 @@ function taskWords() {
         .join("")
     : `<div class="alert">${!cls ? "请先选择班级。" : !cls.courses?.length ? "请先到班级管理中配置该班科目。" : !subject ? "请选择该班的科目。" : "这个科目暂无词汇，请先添加词汇与场景句。"}</div>`;
   taskSummary();
+  renderTaskCalendar();
 }
 function taskAudience() {
   const form = $("#task-form");
@@ -862,6 +1057,17 @@ function taskSummary() {
   const selected = data.getAll("studentIds").length,
     total = cls ? state.students.filter((s) => s.classId === cls.id).length : 0;
   const words = data.getAll("wordIds").length;
+  const titleNode = $("#task-title-preview");
+  if (titleNode)
+    titleNode.textContent =
+      cls && data.get("subject")
+        ? automaticTaskTitle(
+            cls.program,
+            data.get("subject"),
+            data.get("wordGroup"),
+            state.config.subjectNames,
+          )
+        : "选择班级、科目与周次后生成";
   $("#task-audience-count").textContent = cls
     ? `已选 ${selected} / ${total} 人${selected === total && total ? " · 全班参加" : ""}`
     : "";
@@ -1155,6 +1361,44 @@ document.addEventListener("click", async (e) => {
   if (!b) return;
   const action = b.dataset.action;
   try {
+    if (action.startsWith("grade-")) {
+      const a = state.analytics;
+      if (action === "grade-reset")
+        state.analytics = {
+          program: "all",
+          subject: "all",
+          group: "all",
+          classId: "all",
+          band: "all",
+        };
+      if (action === "grade-band") a.band = b.dataset.band;
+      if (action === "grade-group") {
+        a.group =
+          b.dataset.group === "未标注周次 / 单元"
+            ? "ungrouped"
+            : b.dataset.group;
+        a.band = "all";
+      }
+      if (action === "grade-class") {
+        a.classId = b.dataset.id;
+        a.band = "all";
+      }
+      if (action === "grade-student") {
+        const rows = gradeData().rows.filter(
+          (r) =>
+            r.studentId === b.dataset.id &&
+            (a.band === "all" || scoreBand(r) === a.band),
+        );
+        modal(
+          `${rows[0]?.name || "学生"} · 考试记录`,
+          "当前项目、科目、周次及班级筛选范围",
+          `<div class="table-wrap"><table><thead><tr><th>考试</th><th>周次</th><th>成绩 / 状态</th><th>用时</th><th>答题</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.taskTitle)}</td><td>${esc(r.groups.join("、") || "未标注")}</td><td>${r.score ?? ({ pending: "待完成", missing: "未提交", in_progress: "答题中" }[r.state] || "—")}</td><td>${formatElapsed(r.elapsedSeconds)}</td><td>${r.result ? `<button class="btn btn-light btn-sm" data-action="result-detail" data-task="${esc(r.taskId)}" data-student="${esc(r.studentId)}">逐题详情</button>` : "—"}</td></tr>`).join("")}</tbody></table></div>`,
+        );
+        return;
+      }
+      $("#main-view").innerHTML = content();
+      return;
+    }
     if (action === "nav") return await navigate(b.dataset.view);
     if (action === "close-modal") return closeModal();
     if (action === "menu") return $(".sidebar")?.classList.toggle("open");
@@ -1194,6 +1438,35 @@ document.addEventListener("click", async (e) => {
       state.examResult = null;
       closeModal();
       render();
+      return;
+    }
+    if (action === "schedule-month") {
+      const [y, m] = state.scheduleMonth.split("-").map(Number);
+      state.scheduleMonth = new Date(
+        Date.UTC(y, m - 1 + Number(b.dataset.delta), 1),
+      )
+        .toISOString()
+        .slice(0, 7);
+      renderTaskCalendar();
+      return;
+    }
+    if (action === "schedule-date") {
+      const date = b.dataset.date;
+      if (state.scheduleDates.has(date)) {
+        state.scheduleDates.delete(date);
+        delete state.scheduleOverrides[date];
+      } else {
+        if (state.scheduleDates.size >= 29) throw new Error("每批最多30场。");
+        state.scheduleDates.add(date);
+      }
+      renderTaskCalendar();
+      return;
+    }
+    if (action === "task-folders") {
+      document.querySelectorAll("[data-task-folder]").forEach((node) => {
+        node.open = b.dataset.open === "true";
+        state.taskFolders[node.dataset.taskFolder] = node.open;
+      });
       return;
     }
     if (action === "task-share")
@@ -1696,31 +1969,48 @@ document.addEventListener("submit", async (e) => {
       )
         throw new Error("所选学生不属于该班级。");
       const payload = {
-        title: data.title,
+        autoTitle: true,
+        wordGroup: data.wordGroup,
         program: cls.program,
         subject: data.subject,
         mode: data.mode,
         questionType: data.questionType,
-        opensAt: new Date(data.opensAt).toISOString(),
-        closesAt: new Date(data.closesAt).toISOString(),
+        opensAt: beijingISO(data.opensAt),
+        closesAt: beijingISO(data.closesAt),
         duration: Number(data.duration),
         classIds: [cls.id],
         wordIds: fd.getAll("wordIds"),
         audience: studentIds.length === students.length ? "all" : studentIds,
       };
-      const days = Number(data.repeatDays);
-      if (!Number.isInteger(days) || days < 1 || days > 30)
-        throw new Error("连续发布天数应为 1–30 天。");
-      const tasks = Array.from({ length: days }, (_, i) => {
-        const start = new Date(data.opensAt),
-          end = new Date(data.closesAt);
-        start.setDate(start.getDate() + i);
-        end.setDate(end.getDate() + i);
+      const plan = currentTaskPlan();
+      const pool = state.words.filter(
+        (w) =>
+          wordAvailableFor(w, cls.program, data.subject) &&
+          wordAvailableToClass(w, cls),
+      );
+      const tasks = plan.map((entry, index) => {
+        const wordIds =
+          index === 0
+            ? fd.getAll("wordIds")
+            : pool
+                .filter((w) => (w.groups || []).includes(entry.group))
+                .map((w) => w.id);
+        if (!wordIds.length || wordIds.length > 100)
+          throw new Error(
+            `${entry.group}有${wordIds.length}个词汇，请选择1–100个词汇的分组后单独发布。`,
+          );
         return {
           ...payload,
-          title: days > 1 ? `${data.title} · ${shortDate(start)}` : data.title,
-          opensAt: start.toISOString(),
-          closesAt: end.toISOString(),
+          ...entry,
+          wordIds,
+          wordGroup: entry.group,
+          autoTitle: true,
+          title: automaticTaskTitle(
+            cls.program,
+            data.subject,
+            entry.group,
+            state.config.subjectNames,
+          ),
         };
       });
       const published = await post("/api/tasks/batch", { tasks });
@@ -1774,7 +2064,9 @@ document.addEventListener("submit", async (e) => {
       );
     }
   } catch (error) {
-    formError(form, error.message || "操作失败，请重试。");
+    if (form.isConnected)
+      formError(form, error.message || "操作失败，请重试。");
+    else toast(error.message || "操作失败，请重试。", true);
   } finally {
     if (submit) submit.disabled = false;
   }
@@ -1821,6 +2113,24 @@ document.addEventListener("beforeinput", (e) => {
 });
 document.addEventListener("change", (e) => {
   const el = e.target;
+  if (el.dataset.grade) {
+    const a = state.analytics,
+      key = el.dataset.grade;
+    a[key] = el.value;
+    a.band = "all";
+    if (key === "program") {
+      a.subject = "all";
+      a.classId = "all";
+      a.group = "all";
+    }
+    if (key === "subject") {
+      a.classId = "all";
+      a.group = "all";
+    }
+    if (key === "classId") a.group = "all";
+    $("#main-view").innerHTML = content();
+    return;
+  }
   if (el.dataset.filter && el.dataset.filter !== "search") {
     state.filter[el.dataset.filter] = el.value;
     state.wordLimit = 60;
@@ -1829,10 +2139,30 @@ document.addEventListener("change", (e) => {
     if (el.dataset.filter === "program") state.filter.classId = "all";
     $("#main-view").innerHTML = content();
   }
-  if (el.dataset.change === "task-class") taskFilters();
+  if (el.dataset.change === "schedule") {
+    state.scheduleMonth = el.form.elements.opensAt.value.slice(0, 7);
+    renderTaskCalendar();
+  }
+  if (el.dataset.scheduleDate) {
+    state.scheduleOverrides[el.dataset.scheduleDate] = el.value;
+    renderTaskCalendar();
+  }
+  if (el.dataset.change === "task-class") {
+    state.scheduleDates.clear();
+    state.scheduleOverrides = {};
+    taskFilters();
+  }
   if (el.dataset.change === "task-words") taskWords();
   if (el.dataset.change === "task-summary") taskSummary();
 });
+document.addEventListener(
+  "toggle",
+  (e) => {
+    if (e.target.dataset?.taskFolder)
+      state.taskFolders[e.target.dataset.taskFolder] = e.target.open;
+  },
+  true,
+);
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && modalOpen) closeModal();
   if ((e.key === "Enter" || e.key === " ") && e.target.matches(".class-card")) {

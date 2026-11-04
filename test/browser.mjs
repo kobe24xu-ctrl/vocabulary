@@ -115,7 +115,9 @@ try {
   assert.equal(await studentPage.locator("select").count(), 0);
   await studentContext.close();
   await page.getByRole("button", { name: "已妥善保存" }).click();
+  await page.reload();
   await page.locator(".nav [data-view=tasks]").click();
+  await page.getByRole("button", { name: "全部展开", exact: true }).click();
   // This class has an explicit course list, as in the master-managed site.
   assert.equal(
     await page.evaluate(async () => {
@@ -136,8 +138,7 @@ try {
   await page.reload();
   await page.getByRole("heading", { name: "教学概览", exact: true }).waitFor();
   await page.getByRole("button", { name: "发布听写", exact: true }).click();
-  await page.locator("#task-form [name=title]").fill("浏览器验证 · 定向发布");
-  await page.locator("#task-form [name=repeatDays]").fill("2");
+  assert.equal(await page.locator("#task-form [name=title]").count(), 0);
   await page
     .locator("#task-form [name=classId]")
     .selectOption({ label: "UNSW 商科 A 班 · UNSW" });
@@ -162,17 +163,33 @@ try {
     .getByRole("heading", { name: "考试已准备好，分享给学生吧" })
     .waitFor();
   const examLink = await page.locator(".share-exam input").first().inputValue();
-  const futureLink = await page
-    .locator(".share-exam input")
-    .nth(1)
-    .inputValue();
+  const currentId = new URL(examLink).searchParams.get("exam");
+  const currentTask = (
+    await (await page.request.get(`${base}/api/tasks`)).json()
+  ).tasks.find((t) => t.id === currentId);
+  // The calendar's group/date advancement has a separate teacher-tools check.
+  const futureResponse = await page.request.post(`${base}/api/tasks`, {
+    data: {
+      ...currentTask,
+      autoTitle: true,
+      audience: currentTask.audience,
+      opensAt: new Date(Date.now() + 86400000).toISOString(),
+      closesAt: new Date(Date.now() + 90000000).toISOString(),
+    },
+  });
+  assert.equal(futureResponse.status(), 200);
+  const futureTask = (await futureResponse.json()).task;
+  const futureLink = `${base}/?exam=${futureTask.id}`;
   await page.getByRole("button", { name: "完成", exact: true }).click();
-  await page
-    .getByRole("heading", { name: /浏览器验证 · 定向发布/ })
-    .first()
-    .waitFor();
+  await page.reload();
+  await page.locator(".nav [data-view=tasks]").click();
+  await page.getByRole("button", { name: "全部展开", exact: true }).click();
+  await page.getByRole("button", { name: "全部展开", exact: true }).click();
   assert.equal(
-    await page.getByRole("heading", { name: /浏览器验证 · 定向发布/ }).count(),
+    await page
+      .locator(".task-table-row")
+      .filter({ hasText: currentTask.title })
+      .count(),
     2,
   );
   const taskId = new URL(examLink).searchParams.get("exam");

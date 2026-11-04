@@ -24,16 +24,28 @@ export function wordAvailableFor(word, program, subject = "all") {
   if (program === "all") return subject === "all" || word.subject === subject;
   if (program === "NCUK 国际预科") {
     if (
-      ["Business", "Economics", "English", "Physics", "Chemistry"].includes(
-        subject,
-      )
+      [
+        "Business",
+        "Economics",
+        "English",
+        "Physics",
+        "Chemistry",
+        "Integrated Mathematics",
+        "Technical Mathematics",
+      ].includes(subject)
     )
       return word.program === program && word.subject === subject;
     if (
       word.program === "通用示例" &&
-      ["Business", "Economics", "English", "Physics", "Chemistry"].includes(
-        word.subject,
-      )
+      [
+        "Business",
+        "Economics",
+        "English",
+        "Physics",
+        "Chemistry",
+        "Integrated Mathematics",
+        "Technical Mathematics",
+      ].includes(word.subject)
     )
       return false;
   }
@@ -84,9 +96,13 @@ export function wordAvailableToClass(word, cls) {
   if (!word.tracks?.length) return true;
   if (!cls) return false;
   const courses = (cls.courses || []).map((c) => c.subject);
-  const track = courses.some((s) => ["Physics", "Chemistry"].includes(s))
+  const track = courses.some((s) =>
+    ["Physics", "Chemistry", "Technical Mathematics"].includes(s),
+  )
     ? "Technical"
-    : courses.some((s) => ["Business", "Economics"].includes(s))
+    : courses.some((s) =>
+          ["Business", "Economics", "Integrated Mathematics"].includes(s),
+        )
       ? "Integrated"
       : "";
   return word.tracks.includes(track);

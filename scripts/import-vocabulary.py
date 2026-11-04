@@ -15,7 +15,7 @@ import uuid
 ROOT = Path(__file__).resolve().parent.parent
 PROGRAMS = {'UNSW 新南预科', 'NCUK 国际预科', 'UOW 沃隆港预科', '通用示例'}
 SUBJECTS = {'Mathematics', 'English', 'Economics', 'Accounting', 'Computer Science',
-            'Academic English', 'Language Learning', 'Business', 'Physics', 'Chemistry'}
+            'Academic English', 'Language Learning', 'Business', 'Physics', 'Chemistry', 'Integrated Mathematics', 'Technical Mathematics'}
 
 
 def normalized(value):
@@ -32,6 +32,8 @@ def load_words(path):
         raise ValueError('Expected 1–10000 vocabulary records.')
     keys = set()
     for word in words:
+        if word.get('program') == 'NCUK 国际预科' and word.get('subject') == 'Mathematics' and len(word.get('tracks', [])) == 1:
+            word['subject'] = {'Integrated': 'Integrated Mathematics', 'Technical': 'Technical Mathematics'}.get(word['tracks'][0], 'Mathematics')
         if word.get('program') not in PROGRAMS or word.get('subject') not in SUBJECTS:
             raise ValueError('Unsupported program or subject.')
         for field, limit in [('term', 150), ('translation', 150), ('sentence', 2000),

@@ -1,3 +1,4 @@
+import { automaticTaskTitle } from "./public/scheduling.js";
 import {
   wordAvailableFor,
   reviewWordKey,
@@ -88,6 +89,12 @@ db.exec(
   "CREATE TABLE IF NOT EXISTS class_courses(class_id TEXT NOT NULL REFERENCES classes(id),subject TEXT NOT NULL,title TEXT NOT NULL,content TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT '',PRIMARY KEY(class_id,subject))",
 );
 // Idempotent label migration; retain all student and teaching record IDs.
+db.exec(
+  readFileSync(
+    join(ROOT, "cloudflare/migrations/0005_ncuk_math_courses.sql"),
+    "utf8",
+  ),
+);
 db.exec("BEGIN");
 try {
   db.exec(
@@ -311,7 +318,13 @@ function studentCreate(owner, raw) {
   return { id: studentId, name, program: cls.program, classId: cls.id, invite };
 }
 function taskCreate(owner, b) {
-  const title = required(b.title, "任务名称", 120);
+  const title = required(
+    b.autoTitle || !b.title
+      ? automaticTaskTitle(b.program, b.subject, b.wordGroup, SUBJECT_NAMES)
+      : b.title,
+    "任务名称",
+    120,
+  );
   if (!PROGRAMS.includes(b.program) || !SUBJECTS.includes(b.subject))
     fail(400, "请选择课程项目和科目。");
   const opens = Date.parse(b.opensAt),
@@ -351,6 +364,12 @@ function taskCreate(owner, b) {
     pool.find((w) => w.id === wid),
   );
   if (selected.some((w) => !w)) fail(400, "存在不属于该科目或课程的词汇。");
+  if (
+    b.wordGroup &&
+    b.wordGroup !== "all" &&
+    selected.some((w) => !w.groups?.includes(b.wordGroup))
+  )
+    fail(400, "词汇与所选分组不一致。");
   if (!Array.isArray(b.classIds) || b.classIds.length > 100)
     fail(400, "请选择 1–100 个班级。");
   const classIds = [...new Set(b.classIds)];
@@ -444,6 +463,8 @@ function taskView(t) {
     audience: json(t.audience),
     classIds: json(t.class_ids),
     questionCount: qs.length,
+    wordIds: qs.map((q) => q.wordId),
+    wordGroups: [...new Set(qs.flatMap((q) => q.groups || []))],
     questionType: qs.every((q) => q.choices) ? "choice" : "fill",
     mode: qs.every((q) => q.direction === qs[0].direction)
       ? qs[0].direction

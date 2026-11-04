@@ -1,3 +1,4 @@
+import { automaticTaskTitle } from "../public/scheduling.js";
 import { markWithAI } from "../lib/semantic-grading.mjs";
 import {
   wordAvailableFor,
@@ -102,6 +103,8 @@ function taskView(t) {
     audience: json(t.audience),
     classIds: json(t.class_ids),
     questionCount: qs.length,
+    wordIds: qs.map((q) => q.wordId),
+    wordGroups: [...new Set(qs.flatMap((q) => q.groups || []))],
     questionType: qs.every((q) => q.choices) ? "choice" : "fill",
     mode: qs.every((q) => q.direction === qs[0].direction)
       ? qs[0].direction
@@ -390,7 +393,13 @@ function service(env, request, headers = new Headers(SECURITY)) {
     };
   }
   function taskData(owner, b, context) {
-    const title = required(b?.title, "任务名称", 120);
+    const title = required(
+      b?.autoTitle || !b?.title
+        ? automaticTaskTitle(b.program, b.subject, b.wordGroup, SUBJECT_NAMES)
+        : b.title,
+      "任务名称",
+      120,
+    );
     if (!PROGRAMS.includes(b.program) || !SUBJECTS.includes(b.subject))
       fail(400, "请选择课程项目和科目。");
     const opens = Date.parse(b.opensAt),
@@ -437,6 +446,12 @@ function service(env, request, headers = new Headers(SECURITY)) {
       pool.find((w) => w.id === wid),
     );
     if (words.some((w) => !w)) fail(400, "存在不属于该科目或课程的词汇。");
+    if (
+      b.wordGroup &&
+      b.wordGroup !== "all" &&
+      words.some((w) => !w.groups?.includes(b.wordGroup))
+    )
+      fail(400, "词汇与所选分组不一致。");
     if (
       !Array.isArray(b.classIds) ||
       !b.classIds.length ||
