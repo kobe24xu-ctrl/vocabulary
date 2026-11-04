@@ -1,3 +1,4 @@
+import { createPracticeService } from "../lib/practice.mjs";
 import { automaticTaskTitle } from "../public/scheduling.js";
 import { markWithAI } from "../lib/semantic-grading.mjs";
 import {
@@ -160,6 +161,15 @@ function service(env, request, headers = new Headers(SECURITY)) {
     );
   const batch = (statements) =>
     statements.length ? env.DB.batch(statements) : Promise.resolve([]);
+  const practiceService = createPracticeService({
+    one,
+    all,
+    wordsFor,
+    classesFor: classViews,
+    grade: (questions, answers) => markWithAI(questions, answers, env),
+    mutate: (operations) =>
+      batch(operations.map((op) => statement(op.sql, ...op.params))),
+  });
   const allowDemo = env.ALLOW_DEMO === "true";
   const url = request && new URL(request.url);
   const teacher = (u) => {
@@ -1061,6 +1071,14 @@ function service(env, request, headers = new Headers(SECURITY)) {
       await run("DELETE FROM sessions WHERE token_hash=?", session.token_hash);
       return { user: await newSession(target, session.demo_owner_id) };
     }
+    if (path.startsWith("/api/practice"))
+      return practiceService(
+        u,
+        path,
+        method,
+        method === "GET" ? {} : await body(),
+        url.searchParams,
+      );
     if (path === "/api/learning" && method === "GET") {
       student(u);
       const cls = (await classViews(u.owner_id)).find(

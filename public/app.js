@@ -95,6 +95,16 @@ const state = {
   words: [],
   learning: null,
   learningError: null,
+  practiceData: null,
+  practiceError: null,
+  practiceSettings: {
+    subject: "",
+    wordGroup: "",
+    questionType: "choice",
+    mode: "mixed",
+    duration: 15,
+    mistakesOnly: false,
+  },
   results: [],
   mistakes: [],
   filter: {
@@ -194,7 +204,7 @@ const badge = (text, color = "", dot = false) =>
 const empty = (title, body, button = "") =>
   `<div class="empty">${icon("leaf")}<h3>${esc(title)}</h3><p>${esc(body)}</p>${button}</div>`;
 function art() {
-  return `<svg class="welcome-art" viewBox="0 0 300 180" fill="none" aria-hidden="true"><circle cx="191" cy="125" r="108" fill="#FFE0BC"/><circle cx="191" cy="125" r="84" stroke="#EFB77E" stroke-dasharray="3 7"/><path d="M84 125l101-20 74 37-100 25z" fill="#F47721"/><path d="M84 125v12l75 35 100-20v-10l-100 25z" fill="#C35B15"/><path d="M100 105l96-18 65 33-101 21z" fill="#FFFCF5"/><path d="M100 105v13l61 31 100-20v-9l-101 21z" fill="#E9C7A2"/><path d="M112 85l86-17 64 28-93 22z" fill="#5FAD82"/><path d="M112 85v13l57 29 93-21V96l-93 22z" fill="#298461"/><rect x="117" y="28" width="72" height="72" rx="8" transform="rotate(-12 117 28)" fill="#FFFFFF"/><text x="143" y="69" transform="rotate(-12 143 69)" fill="#086149" font-size="29" font-family="Georgia">Aa</text><path d="M221 55c-17-21-5-34 4-32 9 2 6 19-4 32z" fill="#167958"/><path d="M221 55c5-26 25-28 27-17 1 9-14 15-27 17z" fill="#8AC5A2"/><path d="M216 67l7-29" stroke="#176747" stroke-width="2"/><path d="M73 61l5 10 11 1-8 8 1 11-10-5-9 5 1-11-8-8 11-1z" fill="#F5A54E"/><circle cx="251" cy="72" r="4" fill="#F47721"/><path d="M73 145l6 6m-6 0l6-6" stroke="#F47721" stroke-width="2"/><path d="M260 160h15" stroke="#84B799" stroke-width="2"/></svg>`;
+  return `<svg class="welcome-art" viewBox="0 0 300 180" fill="none" aria-hidden="true"><circle cx="191" cy="125" r="108" fill="#eee5d5"/><circle cx="191" cy="125" r="84" stroke="#cfb78e" stroke-dasharray="3 7"/><path d="M84 125l101-20 74 37-100 25z" fill="#ab834b"/><path d="M84 125v12l75 35 100-20v-10l-100 25z" fill="#80623e"/><path d="M100 105l96-18 65 33-101 21z" fill="#FFFCF5"/><path d="M100 105v13l61 31 100-20v-9l-101 21z" fill="#E9C7A2"/><path d="M112 85l86-17 64 28-93 22z" fill="#8099af"/><path d="M112 85v13l57 29 93-21V96l-93 22z" fill="#4d6c8a"/><rect x="117" y="28" width="72" height="72" rx="8" transform="rotate(-12 117 28)" fill="#FFFFFF"/><text x="143" y="69" transform="rotate(-12 143 69)" fill="#294864" font-size="29" font-family="Georgia">Aa</text><path d="M221 55c-17-21-5-34 4-32 9 2 6 19-4 32z" fill="#526f8c"/><path d="M221 55c5-26 25-28 27-17 1 9-14 15-27 17z" fill="#a5b8c8"/><path d="M216 67l7-29" stroke="#36516d" stroke-width="2"/><path d="M73 61l5 10 11 1-8 8 1 11-10-5-9 5 1-11-8-8 11-1z" fill="#d5b782"/><circle cx="251" cy="72" r="4" fill="#ab834b"/><path d="M73 145l6 6m-6 0l6-6" stroke="#ab834b" stroke-width="2"/><path d="M260 160h15" stroke="#b6c1cc" stroke-width="2"/></svg>`;
 }
 function brand() {
   return `<div class="brand"><div class="brand-mark">L<span>·</span></div><div class="brand-name">LexiClass<small>词 间 课 堂</small></div></div>`;
@@ -217,6 +227,7 @@ function navItems() {
     : [
         ["dashboard", "grid", "我的学习"],
         ["learning", "book", "词汇学习"],
+        ["practice", "clipboard", "自主模拟"],
         [
           "tasks",
           "clipboard",
@@ -616,13 +627,157 @@ function studentTaskCard(t) {
     done = !!t.attempt?.submittedAt;
   return `<article class="assignment-card"><div class="assignment-top"><div class="subject-icon ${t.subject}">${icon(subjectIcon(t.subject))}</div>${badge(label, color, true)}</div><h3>${esc(t.title)}</h3><p>${esc(nameSubject(t.subject))} · ${esc(taskModeName(t))}</p>${done ? `<div class="student-score">${t.attempt.score}<small> / 100 分</small></div>` : `<div class="assignment-stats"><span><strong>${t.questionCount}</strong>题</span><span><strong>${t.duration}</strong>分钟</span></div>`}<p>${icon("clock")} ${t.opensAt > now() ? "开始" : "截止"}：${date(t.opensAt > now() ? t.opensAt : t.closesAt)}</p><div class="assignment-bottom" style="margin-top:18px"><span>${done ? `用时 ${formatElapsed(t.attempt.elapsedSeconds)}` : "提交后自动整理错题"}</span><div class="task-actions">${studyButton(t)}<button class="btn ${done ? "btn-light" : "btn-primary"} btn-sm" data-action="${done ? "student-result" : "start-task"}" data-id="${t.id}" ${!done && (t.opensAt > now() || t.closesAt <= now()) ? "disabled" : ""}>${done ? "查看结果" : t.attempt ? "继续答题" : t.opensAt > now() ? "等待开始" : t.closesAt <= now() ? "已截止" : "开始测试"} ${icon("arrow")}</button></div></div></article>`;
 }
+async function loadPractice(more = false, forceLearning = false) {
+  const before = more ? state.practiceData?.nextBefore : null;
+  const [learning, data] = await Promise.all([
+    forceLearning ||
+    !state.learning ||
+    state.practiceLearningUser !== state.user.id ||
+    !state.practiceLearningAt ||
+    Date.now() - state.practiceLearningAt > 300000
+      ? api("/api/learning").then((data) => {
+          state.practiceLearningAt = Date.now();
+          state.practiceLearningUser = state.user.id;
+          return data;
+        })
+      : Promise.resolve(state.learning),
+    api(`/api/practice${before ? `?before=${before}` : ""}`),
+  ]);
+  state.learning = learning;
+  if (more)
+    data.attempts = [...(state.practiceData?.attempts || []), ...data.attempts];
+  state.practiceData = data;
+  state.practiceError = null;
+}
+function practiceFormSettings() {
+  const form = $("#practice-form");
+  if (form) {
+    const fd = new FormData(form);
+    state.practiceSettings = {
+      ...Object.fromEntries(fd),
+      mistakesOnly: fd.has("mistakesOnly"),
+    };
+  }
+  return state.practiceSettings;
+}
+function practiceWords() {
+  const s = state.practiceSettings;
+  return (state.learning?.words || []).filter(
+    (w) => w.subject === s.subject && w.groups?.includes(s.wordGroup),
+  );
+}
+function studentPracticeView() {
+  const h = heading(
+    "自主模拟",
+    "任意周次，随时练习。词汇跟随课程，题面与选项每次重新组合。",
+  );
+  if (state.practiceError)
+    return (
+      h +
+      empty(
+        "模拟考试暂时无法加载",
+        state.practiceError,
+        '<button class="btn btn-light" data-action="practice-refresh">重试</button>',
+      )
+    );
+  if (!state.practiceData || !state.learning)
+    return h + empty("正在准备你的课程", "正在载入各科词汇与模拟记录…");
+  const subjects = state.learning.subjects.filter((s) =>
+    state.learning.words.some((w) => w.subject === s),
+  );
+  if (!subjects.length)
+    return (
+      h +
+      empty(
+        "暂时没有可练习的词汇",
+        "班级词库录入后，各周词汇会自动开放，无需发布考试。",
+      )
+    );
+  const s = state.practiceSettings;
+  if (!subjects.includes(s.subject)) s.subject = subjects[0];
+  const groups = [
+    ...new Set(
+      state.learning.words
+        .filter((w) => w.subject === s.subject)
+        .flatMap((w) => w.groups),
+    ),
+  ].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  if (!groups.includes(s.wordGroup)) s.wordGroup = groups[0] || "";
+  const words = practiceWords(),
+    data = state.practiceData;
+  const wrong = data.mistakes.filter(
+    (m) =>
+      m.subject === s.subject &&
+      (m.wordGroup === s.wordGroup || m.question.groups?.includes(s.wordGroup)),
+  );
+  const wrongIds = new Set(wrong.map((m) => m.question.wordId));
+  const questionCount = s.mistakesOnly
+    ? words.filter((w) => wrongIds.has(w.id)).length
+    : words.length;
+  const active = data.attempts.find((a) => !a.submittedAt);
+  const completed =
+    data.stats?.completed ??
+    data.attempts.filter((a) => a.submittedAt && !a.abandoned).length;
+  return `${h}<section class="panel practice-intro"><div><div class="eyebrow">YOUR OWN PRACTICE ROOM</div><h2>按你的节奏，再练一遍。</h2><p>不需要老师发布，不限制练习次数。选择本班科目与周次，开始你自己的模拟考试。</p></div><span class="practice-label">课程词库 · 独立模拟成绩</span></section>
+  ${active ? `<section class="practice-active"><div><strong>有一场未完成的模拟</strong><p>${esc(active.title)} · ${active.questionCount} 题 · 还可继续作答</p></div><button class="btn btn-light" data-action="practice-open" data-id="${active.id}">继续模拟 ${icon("arrow")}</button></section>` : ""}
+  <div class="practice-layout"><section class="panel practice-setup"><h2>创建模拟考试</h2><form id="practice-form"><div class="form-grid"><label class="form-field"><span>科目</span><select name="subject" data-practice-setting="subject" aria-label="模拟科目">${subjects.map((v) => option(v, nameSubject(v), s.subject)).join("")}</select></label><label class="form-field"><span>周次 / Topic</span><select name="wordGroup" data-practice-setting="wordGroup" aria-label="模拟周次" required>${groups.map((g) => option(g, g, s.wordGroup)).join("")}</select></label><label class="form-field"><span>题型</span><select name="questionType" data-practice-setting="questionType">${option("choice", "选择题 · 五选一", s.questionType)}${option("fill", "填空题 · 手动输入", s.questionType)}</select></label><label class="form-field"><span>翻译方向</span><select name="mode" data-practice-setting="mode">${["mixed", "en-zh", "zh-en"].map((m) => option(m, modeName(m), s.mode)).join("")}</select></label><label class="form-field full"><span>模拟时长（分钟）</span><input type="number" name="duration" value="${esc(s.duration)}" min="1" max="180" required data-practice-setting="duration"></label></div><label class="check-item"><input type="checkbox" name="mistakesOnly" data-practice-setting="mistakesOnly" ${s.mistakesOnly ? "checked" : ""}><span>只练本周的模拟错词 <small>（${wrongIds.size} 个词汇）</small></span></label><div class="practice-scope"><strong>${questionCount} 题</strong><br>${esc(nameSubject(s.subject))} · ${esc(s.wordGroup || "暂无周次")}<br>${s.mistakesOnly ? "从本周的模拟错词出题。" : "本周词库全部词汇，不依赖任何听写任务。"}<br>每次打乱题序，变换提问方式与选项。</div>${active ? '<p class="privacy-note">开始新模拟会结束上一场未交卷的练习；结束的练习不计成绩。</p>' : ""}<button type="submit" class="btn btn-primary" ${!questionCount ? "disabled" : ""}>${icon("plus")}重新出题并开始</button><p class="privacy-note">模拟考试自动保存，可刷新继续。交卷后查看结果，也可以立刻再练同一周。</p></form></section>
+  <aside><div class="practice-summary"><div><small>累计完成</small><strong>${completed}</strong></div><div><small>模拟均分</small><strong>${data.stats?.average ?? "—"}</strong></div><div><small>待巩固错词</small><strong>${data.mistakes.length}</strong></div></div><section class="panel"><div class="panel-header"><div><h2>练习错词</h2><p>${esc(nameSubject(s.subject))} · ${esc(s.wordGroup)}</p></div></div><div class="practice-wrong-list">${
+    wrong.length
+      ? wrong
+          .slice(0, state.practiceWrongLimit || 20)
+          .map(
+            (m) =>
+              `<div class="practice-wrong-item"><div><strong>${esc(m.question.term)}</strong><small>${esc(m.question.translation)} · ${esc(modeName(m.question.direction))}</small><small>上次作答：${esc(m.lastAnswer || "未作答")}</small></div><span class="badge gray">${m.errorCount} 次</span></div>`,
+          )
+          .join("")
+      : '<p class="muted">本周暂无练习错词，开始一场模拟看看吧。</p>'
+  }${wrong.length > (state.practiceWrongLimit || 20) ? '<button class="btn btn-quiet" data-action="practice-more-wrong">显示更多错词</button>' : ""}</div></section><p class="privacy-note">模拟成绩与练习错词单独记录，老师的正式听写成绩和错题本保持独立。</p></aside></div>
+  <section class="panel practice-history"><div class="panel-header"><div><h2>我的模拟记录</h2><p>每次的科目、范围、成绩与用时都会保留</p></div><button class="btn btn-light btn-sm" data-action="practice-refresh">刷新记录</button></div><div class="table-wrap"><table><thead><tr><th>科目 / 周次</th><th>题型</th><th>成绩</th><th>用时</th><th>开始时间</th><th>操作</th></tr></thead><tbody>${data.attempts.map((a) => `<tr><td>${esc(nameSubject(a.subject))}<div class="table-secondary">${esc(a.wordGroup)} · ${a.questionCount} 题</div></td><td>${esc(taskModeName(a))}</td><td><strong>${a.score ?? (a.abandoned ? "已结束" : "进行中")}</strong></td><td>${formatElapsed(a.elapsedSeconds)}</td><td>${date(a.startedAt, true)}</td><td>${!a.abandoned ? `<button class="btn btn-light btn-sm" data-action="practice-open" data-id="${a.id}">${a.submittedAt ? "查看结果" : "继续模拟"}</button>` : '<span class="muted">未交卷</span>'}</td></tr>`).join("")}</tbody></table></div>${!data.attempts.length ? empty("还没有模拟记录", "先选一科、一周，开始第一次自测。") : ""}${data.nextBefore ? '<button class="btn btn-light" style="margin:20px" data-action="practice-more">更早的模拟记录</button>' : ""}</section>`;
+}
+function enterPractice(data) {
+  state.practiceSettings = {
+    ...state.practiceSettings,
+    subject: data.task.subject,
+    wordGroup: data.task.wordGroup,
+    questionType: data.task.questionType,
+    mode: data.task.mode,
+    duration: data.task.duration,
+  };
+  if (data.attempt.abandoned) {
+    sessionStorage.removeItem("lexiclass-practice");
+    return navigate("practice");
+  }
+  state.view = "practice";
+  state.requestedExamId = null;
+  sessionStorage.removeItem("lexiclass-exam");
+  if (data.attempt.submittedAt) {
+    state.examResult = { attempt: data.attempt, task: data.task };
+    state.attempt = null;
+    sessionStorage.removeItem("lexiclass-practice");
+  } else {
+    state.attempt = data;
+    state.examResult = null;
+    sessionStorage.setItem("lexiclass-practice", data.attempt.id);
+    saveVersion = 0;
+    savedVersion = 0;
+    saveQueue = Promise.resolve();
+    submitting = false;
+  }
+  render();
+  window.scrollTo(0, 0);
+}
+const attemptEndpoint = (a) =>
+  a.task.practice
+    ? `/api/practice/${a.attempt.id}`
+    : `/api/attempts/${a.attempt.id}`;
+
 function studentDashboard() {
   const pending = state.tasks.filter(
       (t) => !t.attempt?.submittedAt && t.closesAt > now(),
     ),
     done = state.tasks.filter((t) => t.attempt?.submittedAt),
     due = state.mistakes.filter((m) => !m.resolved && m.nextReview <= now());
-  return `${heading("我的学习", "每天一点积累，让专业课里的每一句话都更清晰。", `<button class="btn btn-primary" data-action="nav" data-view="learning">${icon("book")}词汇学习 · 随时学习</button><button class="btn btn-light" data-action="notifications">${icon("bell")}开启任务提醒</button>`)}<section class="student-welcome"><h2>${esc(state.user.name)}，今天也要有所收获。</h2><p>${esc(state.user.className)}<br>老师已为你安排好学习内容，准备好就开始吧。</p>${art()}</section><div class="stats-grid">${stat("待完成测试", pending.length, "份", "clipboard", "记得在截止时间前提交")}${stat("已完成测试", done.length, "份", "check", "每一次努力都有记录", "blue")}${stat("听写平均分", mean(done.map((t) => ({ score: t.attempt.score }))), "分", "chart", "持续练习，慢慢进步", "gold")}${stat("今天待复习", due.length, "个", "repeat", `共 ${state.mistakes.filter((m) => !m.resolved).length} 个未掌握错词`, "purple")}</div><div class="panel-header" style="padding:0 0 18px"><h2>接下来，完成这些练习</h2><button class="section-link" data-action="nav" data-view="tasks">全部测试 ${icon("arrow")}</button></div><div class="cards-grid">${pending.slice(0, 3).map(studentTaskCard).join("")}</div>${!pending.length ? empty("今天的待办已清空", "可以去错题本复习，或者回看之前的成绩。", `<button class="btn btn-primary" data-action="nav" data-view="review">${icon("repeat")}复习错题</button>`) : ""}`;
+  return `${heading("我的学习", "每天一点积累，让专业课里的每一句话都更清晰。", `<button class="btn btn-primary" data-action="nav" data-view="practice">${icon("clipboard")}自主模拟 · 随时练习</button><button class="btn btn-light" data-action="nav" data-view="learning">${icon("book")}词汇学习</button><button class="btn btn-light" data-action="notifications">${icon("bell")}开启任务提醒</button>`)}<section class="student-welcome"><h2>${esc(state.user.name)}，今天也要有所收获。</h2><p>${esc(state.user.className)}<br>老师已为你安排好学习内容，准备好就开始吧。</p>${art()}</section><div class="stats-grid">${stat("待完成测试", pending.length, "份", "clipboard", "记得在截止时间前提交")}${stat("已完成测试", done.length, "份", "check", "每一次努力都有记录", "blue")}${stat("听写平均分", mean(done.map((t) => ({ score: t.attempt.score }))), "分", "chart", "持续练习，慢慢进步", "gold")}${stat("今天待复习", due.length, "个", "repeat", `共 ${state.mistakes.filter((m) => !m.resolved).length} 个未掌握错词`, "purple")}</div><div class="panel-header" style="padding:0 0 18px"><h2>接下来，完成这些练习</h2><button class="section-link" data-action="nav" data-view="tasks">全部测试 ${icon("arrow")}</button></div><div class="cards-grid">${pending.slice(0, 3).map(studentTaskCard).join("")}</div>${!pending.length ? empty("今天的待办已清空", "可以去错题本复习，或者回看之前的成绩。", `<button class="btn btn-primary" data-action="nav" data-view="review">${icon("repeat")}复习错题</button>`) : ""}`;
 }
 function studentTasks(history = false) {
   const tasks = state.tasks.filter((t) =>
@@ -663,7 +818,7 @@ const answerAttrs =
   'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"';
 function examView() {
   const a = state.attempt;
-  return `<div class="exam-layout"><div class="exam-top"><div><span class="eyebrow">CONTEXTUAL PRACTICE</span><h2>${esc(a.task.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p></div><div class="exam-clock mono" id="exam-clock">--:--</div></div><div class="alert">请翻译场景句中高亮的词汇或短语。答题框已关闭浏览器自动纠错、拼写检查和自动补全；请同时关闭输入法的联想纠错。到时会按服务端已保存答案自动交卷。</div><div class="exam-progress"><div id="exam-progress-fill" style="width:${(Object.values(a.attempt.answers).filter((v) => v.trim()).length / a.questions.length) * 100}%"></div></div><form id="exam-form">${a.questions.map((q, i) => `<article class="question-card"><div class="question-label"><span>QUESTION ${String(i + 1).padStart(2, "0")} / ${String(a.questions.length).padStart(2, "0")}</span>${badge(`${q.choices ? "选择题" : "填空题"} · ${modeName(q.direction)}`, "gray")}</div><h3>${q.choices ? (q.direction === "zh-en" ? "请选择高亮词义对应的英文词汇" : "请选择高亮词汇在本句中的含义") : q.direction === "zh-en" ? "请写出高亮词汇对应的英文" : "请写出高亮词汇在本句中的中文含义"}</h3><div class="question-prompt">${highlight(q.prompt, q.focus)}</div>${q.choices ? q.choices.map((c, j) => `<label class="choice-label"><input type="radio" name="${q.id}" value="${esc(c)}" ${a.attempt.answers[q.id] === c ? "checked" : ""}><span>${String.fromCharCode(65 + j)}.</span>${esc(c)}</label>`).join("") : `<label class="form-field"><span class="visually-hidden">第 ${i + 1} 题答案</span><input name="${q.id}" type="text" lang="${q.direction === "zh-en" ? "en" : "zh-CN"}" ${answerAttrs} maxlength="2000" placeholder="${q.direction === "zh-en" ? "在此输入英文词汇或短语…" : "在此输入中文释义…"}" value="${esc(a.attempt.answers[q.id] || "")}"></label>`}</article>`).join("")}<div class="exam-sticky"><div><div class="save-indicator" id="save-indicator">${icon("shield")} 已保存到服务器</div><small class="muted" id="answered-count">已作答 ${Object.values(a.attempt.answers).filter((v) => v.trim()).length} / ${a.questions.length} 题</small></div><button type="button" class="btn btn-primary" data-action="confirm-submit" id="submit-button">提交本次听写 ${icon("arrow")}</button></div></form></div>`;
+  return `<div class="exam-layout">${a.task.practice ? `<div class="practice-inline-note">自主模拟 · 可不限次数练习 <button class="btn btn-quiet btn-sm" data-action="nav" data-view="practice">保存并返回模拟设置</button></div>` : ""}<div class="exam-top"><div><span class="eyebrow">CONTEXTUAL PRACTICE</span><h2>${esc(a.task.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p></div><div class="exam-clock mono" id="exam-clock">--:--</div></div><div class="alert">请翻译场景句中高亮的词汇或短语。答题框已关闭浏览器自动纠错、拼写检查和自动补全；请同时关闭输入法的联想纠错。到时会按服务端已保存答案自动交卷。</div><div class="exam-progress"><div id="exam-progress-fill" style="width:${(Object.values(a.attempt.answers).filter((v) => v.trim()).length / a.questions.length) * 100}%"></div></div><form id="exam-form">${a.questions.map((q, i) => `<article class="question-card"><div class="question-label"><span>QUESTION ${String(i + 1).padStart(2, "0")} / ${String(a.questions.length).padStart(2, "0")}</span>${badge(`${q.choices ? "选择题" : "填空题"} · ${modeName(q.direction)}`, "gray")}</div><h3>${q.choices ? (q.direction === "zh-en" ? "请选择高亮词义对应的英文词汇" : "请选择高亮词汇在本句中的含义") : q.direction === "zh-en" ? "请写出高亮词汇对应的英文" : "请写出高亮词汇在本句中的中文含义"}</h3><div class="question-prompt">${highlight(q.prompt, q.focus)}</div>${q.choices ? q.choices.map((c, j) => `<label class="choice-label"><input type="radio" name="${q.id}" value="${esc(c)}" ${a.attempt.answers[q.id] === c ? "checked" : ""}><span>${String.fromCharCode(65 + j)}.</span>${esc(c)}</label>`).join("") : `<label class="form-field"><span class="visually-hidden">第 ${i + 1} 题答案</span><input name="${q.id}" type="text" lang="${q.direction === "zh-en" ? "en" : "zh-CN"}" ${answerAttrs} maxlength="2000" placeholder="${q.direction === "zh-en" ? "在此输入英文词汇或短语…" : "在此输入中文释义…"}" value="${esc(a.attempt.answers[q.id] || "")}"></label>`}</article>`).join("")}<div class="exam-sticky"><div><div class="save-indicator" id="save-indicator">${icon("shield")} 已保存到服务器</div><small class="muted" id="answered-count">已作答 ${Object.values(a.attempt.answers).filter((v) => v.trim()).length} / ${a.questions.length} 题</small></div><button type="button" class="btn btn-primary" data-action="confirm-submit" id="submit-button">${a.task.practice ? "提交模拟考试" : "提交本次听写"} ${icon("arrow")}</button></div></form></div>`;
 }
 function formatElapsed(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "—";
@@ -691,6 +846,8 @@ function resultBody(result) {
 function resultView() {
   const { attempt: a, task } = state.examResult,
     r = a.result;
+  if (task.practice)
+    return `<div class="exam-layout"><div class="practice-inline-note">自主模拟成绩 · 已单独保存</div><div class="result-hero"><span class="eyebrow">SELF PRACTICE / COMPLETE</span><h2>${esc(state.user.name)}，本次模拟已完成。</h2><div class="result-number mono">${a.score}<small>分</small></div><p>${esc(task.title)} · 答对 ${r.correct} / ${r.total} 题</p>${timingSummary(a)}<div class="result-actions"><button class="btn btn-primary" data-action="practice-again">${icon("repeat")}再练同一周</button><button class="btn btn-light" data-action="nav" data-view="practice">选择其他科目 / 周次</button></div></div>${resultBody(r).replaceAll("已收入错题本", "已加入练习错词")}</div>`;
   return `<div class="exam-layout"><div class="result-hero"><span class="eyebrow">PRACTICE COMPLETE</span><h2>${esc(state.user.name)}，本次听写已提交。</h2><div class="result-number mono">${a.score}<small>分</small></div><p>${esc(task.title)} · 答对 ${r.correct} / ${r.total} 题</p>${timingSummary(a)}<div class="result-actions"><button class="btn btn-light" data-action="finish-result">返回我的学习</button><button class="btn btn-primary" data-action="result-review">${icon("repeat")}去错题本复习</button></div></div>${resultBody(r)}</div>`;
 }
 function accountView() {
@@ -742,6 +899,8 @@ function classCourses(classId, editing = false) {
 function content() {
   if (state.attempt) return examView();
   if (state.examResult) return resultView();
+  if (state.user.role === "student" && state.view === "practice")
+    return studentPracticeView();
   if (state.user.role === "student" && state.view === "learning")
     return learningView();
   if (state.user.role === "student" && state.view === "account")
@@ -798,7 +957,9 @@ async function load() {
     );
 }
 async function refresh() {
-  if (state.user?.role === "student" && state.view === "learning") {
+  if (state.user?.role === "student" && state.view === "practice") {
+    await loadPractice();
+  } else if (state.user?.role === "student" && state.view === "learning") {
     state.learning = await api("/api/learning");
     state.learningError = null;
   } else await load();
@@ -1207,6 +1368,7 @@ function parseCSV(text) {
   });
 }
 async function startTask(tid) {
+  sessionStorage.removeItem("lexiclass-practice");
   const data = await post(`/api/tasks/${tid}/start`);
   if (data.attempt.submittedAt) {
     state.examResult = { attempt: data.attempt, task: data.task };
@@ -1244,10 +1406,11 @@ function queueSave() {
     .then(async () => {
       if (state.attempt !== attempt) return;
       try {
-        const r = await api(`/api/attempts/${attempt.attempt.id}`, {
+        const r = await api(attemptEndpoint(attempt), {
           method: "PATCH",
           body: JSON.stringify({ answers }),
         });
+        if (state.attempt !== attempt) return;
         if (r.attempt?.submittedAt) {
           completeExam(r.attempt);
           return;
@@ -1265,6 +1428,14 @@ function queueSave() {
 }
 function completeExam(a) {
   if (!state.attempt) return;
+  if (a.abandoned) {
+    state.attempt = null;
+    submitting = false;
+    clearTimeout(saveTimer);
+    sessionStorage.removeItem("lexiclass-practice");
+    navigate("practice");
+    return;
+  }
   closeModal();
   const task = state.attempt.task;
   state.attempt = null;
@@ -1272,7 +1443,10 @@ function completeExam(a) {
   clearTimeout(saveTimer);
   submitting = false;
   render();
-  load().catch(() => {});
+  if (task.practice) {
+    sessionStorage.removeItem("lexiclass-practice");
+    loadPractice().catch(() => {});
+  } else load().catch(() => {});
   window.scrollTo(0, 0);
 }
 async function submitExam() {
@@ -1286,9 +1460,10 @@ async function submitExam() {
   try {
     await saveQueue.catch(() => {});
     if (state.attempt !== attempt) return;
-    const r = await post(`/api/attempts/${attempt.attempt.id}/submit`, {
+    const r = await post(`${attemptEndpoint(attempt)}/submit`, {
       answers: attempt.attempt.answers,
     });
+    if (state.attempt !== attempt) return;
     completeExam(r.attempt);
   } catch (e) {
     submitting = false;
@@ -1323,6 +1498,14 @@ function reviewWord(mid) {
   reviewing = m;
 }
 async function navigate(view) {
+  if (state.attempt?.task.practice) {
+    readAnswers();
+    await queueSave();
+    state.attempt = null;
+    submitting = false;
+    clearTimeout(saveTimer);
+    sessionStorage.removeItem("lexiclass-practice");
+  }
   if (state.attempt) {
     toast("请先完成并提交当前测试。");
     return;
@@ -1340,12 +1523,24 @@ async function navigate(view) {
     search: "",
   };
   state.resultTaskId = null;
+  if (view === "practice") {
+    state.practiceData = null;
+    state.practiceError = null;
+  }
   if (view === "learning") {
     state.learning = null;
     state.learningError = null;
   }
   render();
   window.scrollTo(0, 0);
+  if (view === "practice") {
+    try {
+      await loadPractice(false, true);
+    } catch (error) {
+      state.practiceError = error.message;
+    }
+    render();
+  }
   if (view === "learning") {
     try {
       state.learning = await api("/api/learning");
@@ -1398,6 +1593,38 @@ document.addEventListener("click", async (e) => {
       }
       $("#main-view").innerHTML = content();
       return;
+    }
+    if (action.startsWith("practice-")) {
+      if (action === "practice-open") {
+        enterPractice(await api(`/api/practice/${b.dataset.id}`));
+        return;
+      }
+      if (action === "practice-again") {
+        const t = state.examResult.task;
+        enterPractice(
+          await post("/api/practice", {
+            subject: t.subject,
+            wordGroup: t.wordGroup,
+            mode: t.mode,
+            questionType: t.questionType,
+            duration: t.duration,
+          }),
+        );
+        return;
+      }
+      if (action === "practice-more-wrong") {
+        state.practiceWrongLimit = (state.practiceWrongLimit || 20) + 30;
+        render();
+        return;
+      }
+      if (action === "practice-refresh" || action === "practice-more") {
+        await loadPractice(
+          action === "practice-more",
+          action === "practice-refresh",
+        );
+        render();
+        return;
+      }
     }
     if (action === "nav") return await navigate(b.dataset.view);
     if (action === "close-modal") return closeModal();
@@ -1868,6 +2095,15 @@ document.addEventListener("submit", async (e) => {
     form.querySelector("[type=submit]");
   if (submit) submit.disabled = true;
   try {
+    if (form.id === "practice-form") {
+      const settings = practiceFormSettings();
+      enterPractice(
+        await post("/api/practice", {
+          ...settings,
+          duration: Number(settings.duration),
+        }),
+      );
+    }
     if (form.id === "password-form") {
       if (data.newPassword !== data.passwordConfirm)
         throw new Error("两次输入的新密码不一致。");
@@ -2113,6 +2349,21 @@ document.addEventListener("beforeinput", (e) => {
 });
 document.addEventListener("change", (e) => {
   const el = e.target;
+  if (el.dataset.practiceSetting) {
+    practiceFormSettings();
+    state.practiceWrongLimit = 20;
+    if (el.dataset.practiceSetting === "subject") {
+      state.practiceSettings.wordGroup = "";
+      state.practiceSettings.mistakesOnly = false;
+    }
+    if (
+      ["subject", "wordGroup", "mistakesOnly"].includes(
+        el.dataset.practiceSetting,
+      )
+    )
+      $("#main-view").innerHTML = content();
+    return;
+  }
   if (el.dataset.grade) {
     const a = state.analytics,
       key = el.dataset.grade;
@@ -2274,6 +2525,18 @@ async function init() {
     if (state.user) {
       await load();
       openRequestedExam();
+    }
+    const practiceId = sessionStorage.getItem("lexiclass-practice");
+    if (
+      state.user?.role === "student" &&
+      practiceId &&
+      !state.requestedExamId
+    ) {
+      try {
+        enterPractice(await api(`/api/practice/${practiceId}`));
+      } catch {
+        sessionStorage.removeItem("lexiclass-practice");
+      }
     }
     render();
     if ("serviceWorker" in navigator)

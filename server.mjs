@@ -1,3 +1,4 @@
+import { createPracticeService } from "./lib/practice.mjs";
 import { automaticTaskTitle } from "./public/scheduling.js";
 import {
   wordAvailableFor,
@@ -108,6 +109,30 @@ try {
   db.exec("ROLLBACK");
   throw error;
 }
+db.exec(
+  readFileSync(
+    join(ROOT, "cloudflare/migrations/0006_student_practice.sql"),
+    "utf8",
+  ),
+);
+const practiceService = createPracticeService({
+  one,
+  all,
+  wordsFor,
+  classesFor: classViews,
+  grade: mark,
+  mutate: async (operations) => {
+    db.exec("BEGIN");
+    try {
+      const result = operations.map((op) => run(op.sql, ...op.params));
+      db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  },
+});
 const hash = (v) => createHash("sha256").update(String(v)).digest("hex");
 const token = () => randomBytes(24).toString("hex");
 const id = () => randomUUID();
@@ -928,6 +953,14 @@ async function api(req, res, url) {
     run("DELETE FROM sessions WHERE token_hash=?", session.token_hash);
     return { user: newSession(req, res, target, session.demo_owner_id) };
   }
+  if (path.startsWith("/api/practice"))
+    return practiceService(
+      u,
+      path,
+      method,
+      method === "GET" ? {} : await body(req),
+      url.searchParams,
+    );
   if (path === "/api/learning" && method === "GET") {
     if (u.role !== "student") fail(403, "请使用学生账号学习。");
     const cls = classViews(u.owner_id).find((c) => c.id === u.class_id);

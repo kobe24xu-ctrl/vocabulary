@@ -56,14 +56,21 @@ const shared =
 const speech = read("public/speech.js")
   .replaceAll("export function ", "function ")
   .replaceAll("export async function ", "async function ");
+const practiceQuestions = read("lib/practice-questions.mjs")
+  .replace(/^import[\s\S]*?;\n/gm, "")
+  .replaceAll("export function ", "function ");
+const demoStyles = read("public/styles.css").replace(
+  /url\(['"]?\/classroom-xihei\.woff2['"]?\)/g,
+  `url(data:font/woff2;base64,${readFileSync(join(root, "public/classroom-xihei.woff2")).toString("base64")})`,
+);
 const script =
-  `const DEMO_FILE_BASE=location.href.split(/[?#]/)[0];\nconst randomInt=max=>Math.floor(Math.random()*max);\n${shared}\n${read("scripts/demo-runtime.js")}\n${speech}\n${app}`.replace(
+  `const DEMO_FILE_BASE=location.href.split(/[?#]/)[0];\nconst randomInt=max=>Math.floor(Math.random()*max);\n${shared}\n${practiceQuestions}\n${read("scripts/demo-runtime.js")}\n${speech}\n${app}`.replace(
     /<\/script/gi,
     "<\\/script",
   );
 const icon = `data:image/svg+xml,${encodeURIComponent(read("public/icon.svg"))}`;
 const guideCSS = `body{padding-top:58px}.sidebar{top:58px}.offline-guide{position:fixed;inset:0 0 auto;min-height:58px;background:#fff3d9;color:#735e2d;z-index:250;padding:10px 22px;display:flex;gap:12px;align-items:center;font:12px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;border-bottom:1px solid #e9d6a4}.offline-guide strong{white-space:nowrap}.offline-guide span{flex:1}.offline-guide button{background:white;border:1px solid #e5d5ae;border-radius:6px;color:#735e2d;padding:6px 10px;font:inherit;white-space:nowrap;cursor:pointer}@media(max-width:760px){body{padding-top:110px}.sidebar{top:110px}.offline-guide{min-height:110px;gap:7px;flex-wrap:wrap;font-size:10px;padding:10px}.offline-guide span{min-width:65%}}`;
-const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'"><title>词间课堂 · 本机交互试用版</title><link rel="icon" href="${icon}"><style>${read("public/styles.css")}\n${guideCSS}</style></head><body><section class="offline-guide"><strong>本机交互试用版</strong><span>不是在线托管；只在本机浏览器保存，不能供全班共享。请勿输入真实学生信息或真实密码。<small id="offline-storage-note">先发布听写，再点「体验学生端」试答题。</small></span><button id="offline-teacher">回到教师端</button><button id="offline-reset">重置示例</button></section><div id="app"></div><div id="modal-root"></div><div id="toast-root" aria-live="polite"></div><script type="module">${script}</script></body></html>`;
+const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; font-src data:; base-uri 'none'; form-action 'none'"><title>词间课堂 · 本机交互试用版</title><link rel="icon" href="${icon}"><style>${demoStyles}\n${guideCSS}</style></head><body><section class="offline-guide"><strong>本机交互试用版</strong><span>不是在线托管；只在本机浏览器保存，不能供全班共享。请勿输入真实学生信息或真实密码。<small id="offline-storage-note">先发布听写，再点「体验学生端」试答题。</small></span><button id="offline-teacher">回到教师端</button><button id="offline-reset">重置示例</button></section><div id="app"></div><div id="modal-root"></div><div id="toast-root" aria-live="polite"></div><script type="module">${script}</script></body></html>`;
 const output = resolve(
   process.argv[2] || join(root, "dist/lexiclass-demo.html"),
 );

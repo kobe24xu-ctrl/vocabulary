@@ -312,6 +312,188 @@
     });
     persist();
   }
+  function demoPracticeView(a, detail = false) {
+    const { questions, answers, result, ...metadata } = a;
+    return {
+      ...metadata,
+      practice: true,
+      questionCount: questions.length,
+      ...attemptTiming(a.startedAt, a.submittedAt, a.deadline),
+      ...(detail ? { answers, result } : {}),
+    };
+  }
+  function demoPracticeDetail(a) {
+    return {
+      attempt: demoPracticeView(a, true),
+      task: demoPracticeView(a),
+      questions: a.submittedAt ? [] : a.questions.map(publicQuestion),
+      serverTime: Date.now(),
+    };
+  }
+  function finishPractice(a, answers, timedOut = false) {
+    if (a.submittedAt) return a;
+    a.answers = answers;
+    a.result = mark(a.questions, answers);
+    a.score = a.result.score;
+    a.submittedAt = Math.min(Date.now(), a.deadline);
+    a.timedOut = timedOut;
+    for (const r of a.result.results) {
+      const q = a.questions.find((q) => q.id === r.questionId);
+      let m = db.practiceMistakes.find(
+        (m) =>
+          m.studentId === a.studentId &&
+          m.subject === a.subject &&
+          m.question.wordId === q.wordId &&
+          m.question.direction === q.direction,
+      );
+      if (r.correct) {
+        if (m) m.resolved = true;
+        continue;
+      }
+      if (!m) {
+        m = {
+          id: uid(),
+          studentId: a.studentId,
+          subject: a.subject,
+          errorCount: 0,
+        };
+        db.practiceMistakes.push(m);
+      }
+      Object.assign(m, {
+        wordGroup: a.wordGroup,
+        question: q,
+        errorCount: m.errorCount + 1,
+        lastAnswer: r.submitted,
+        resolved: false,
+      });
+    }
+    return a;
+  }
+  function demoPracticeRoute(u, path, method, body) {
+    if (u.role !== "student") reject("请使用学生账号自主练习。", 403);
+    for (const a of db.practiceAttempts.filter(
+      (a) => a.studentId === u.id && !a.submittedAt && a.deadline <= Date.now(),
+    ))
+      finishPractice(a, a.answers, true);
+    if (path === "/api/practice" && method === "GET") {
+      const attempts = db.practiceAttempts
+        .filter((a) => a.studentId === u.id)
+        .sort((a, b) => b.startedAt - a.startedAt);
+      const done = attempts.filter((a) => a.submittedAt && !a.abandoned);
+      return {
+        attempts: attempts.map((a) => demoPracticeView(a)),
+        nextBefore: null,
+        stats: {
+          completed: done.length,
+          average: done.length
+            ? Math.round(
+                (done.reduce((v, a) => v + a.score, 0) / done.length) * 10,
+              ) / 10
+            : null,
+        },
+        mistakes: db.practiceMistakes.filter(
+          (m) => m.studentId === u.id && !m.resolved,
+        ),
+        serverTime: Date.now(),
+      };
+    }
+    if (path === "/api/practice" && method === "POST") {
+      const cls = db.classes.find((c) => c.id === u.classId);
+      if (!cls?.courses?.some((c) => c.subject === body.subject))
+        reject("请选择本班科目。");
+      if (
+        !["choice", "fill"].includes(body.questionType) ||
+        !["mixed", "en-zh", "zh-en"].includes(body.mode)
+      )
+        reject("题型不正确。");
+      const duration = Number(body.duration);
+      if (!Number.isInteger(duration) || duration < 1 || duration > 180)
+        reject("时长需为1–180分钟。");
+      const pool = db.words
+        .filter(
+          (w) =>
+            wordAvailableFor(w, cls.program, body.subject) &&
+            wordAvailableToClass(w, cls),
+        )
+        .map((w) => ({ ...w, subject: body.subject }));
+      let selected = pool.filter((w) => w.groups?.includes(body.wordGroup));
+      if (body.mistakesOnly) {
+        const ids = new Set(
+          db.practiceMistakes
+            .filter(
+              (m) =>
+                m.studentId === u.id &&
+                !m.resolved &&
+                m.subject === body.subject &&
+                m.wordGroup === body.wordGroup,
+            )
+            .map((m) => m.question.wordId),
+        );
+        selected = selected.filter((w) => ids.has(w.id));
+      }
+      if (!selected.length || selected.length > 300)
+        reject("请选择有词汇的周次（1–300词）。");
+      const previous = db.practiceAttempts
+        .filter((a) => a.studentId === u.id && a.subject === body.subject)
+        .at(-1);
+      const questions = buildPracticeQuestions(
+        selected,
+        body.mode,
+        pool,
+        body.questionType,
+        previous?.questions || [],
+      );
+      for (const old of db.practiceAttempts.filter(
+        (a) => a.studentId === u.id && !a.submittedAt,
+      ))
+        Object.assign(old, { submittedAt: Date.now(), abandoned: true });
+      const a = {
+        id: uid(),
+        studentId: u.id,
+        practice: true,
+        program: cls.program,
+        subject: body.subject,
+        wordGroup: body.wordGroup,
+        title: `模拟 · ${SUBJECT_NAMES[body.subject]} · ${body.wordGroup}`,
+        mode: body.mode,
+        questionType: body.questionType,
+        duration,
+        startedAt: Date.now(),
+        deadline: Date.now() + duration * 60000,
+        questions,
+        answers: {},
+        result: null,
+        score: null,
+        submittedAt: null,
+        abandoned: false,
+      };
+      db.practiceAttempts.push(a);
+      return demoPracticeDetail(a);
+    }
+    const m = path.match(/^\/api\/practice\/([^/]+)(\/submit)?$/);
+    const a =
+      m &&
+      db.practiceAttempts.find((a) => a.id === m[1] && a.studentId === u.id);
+    if (!a) reject("模拟记录不存在。", 404);
+    if (a.submittedAt || method === "GET") return demoPracticeDetail(a);
+    if (
+      !body.answers ||
+      typeof body.answers !== "object" ||
+      Array.isArray(body.answers)
+    )
+      reject("答案格式不正确。");
+    const ids = new Set(a.questions.map((q) => q.id));
+    for (const [k, v] of Object.entries(body.answers))
+      if (!ids.has(k) || typeof v !== "string" || v.length > 2000)
+        reject("答案格式不正确。");
+    a.answers = body.answers;
+    if (m[2] && method === "POST")
+      return demoPracticeDetail(finishPractice(a, a.answers));
+    if (method === "PATCH")
+      return { savedAt: Date.now(), serverTime: Date.now() };
+    reject("不支持此操作。", 405);
+  }
+
   const ready = (async () => {
     try {
       db = JSON.parse(localStorage.getItem(storageKey) || "null");
@@ -320,6 +502,8 @@
     for (const row of [...db.users, ...db.classes, ...db.words, ...db.tasks]) {
       if (row.program === "UOW 伍伦贡预科") row.program = "UOW 沃隆港预科";
     }
+    db.practiceAttempts ||= [];
+    db.practiceMistakes ||= [];
     persist();
   })();
 
@@ -409,6 +593,8 @@
       return { user: info(u) };
     }
     const u = requireUser();
+    if (path.startsWith("/api/practice"))
+      return demoPracticeRoute(u, path, method, body);
     if (path === "/api/me") return { user: info(u), serverTime: Date.now() };
     if (path === "/api/demo/switch") {
       const target = body.studentId

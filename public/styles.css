@@ -2516,3 +2516,394 @@ tbody tr:last-child td {
     min-width: 130px;
   }
 }
+
+/* Approved Academy Blue / full LXGW Neo XiHei: same glyphs on Windows and Mac. */
+@font-face {
+  font-family: "Classroom Xihei";
+  src: url("/classroom-xihei.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+:root {
+  --ink: #24374e;
+  --muted: #718090;
+  --forest: #192d47;
+  --forest2: #2a435e;
+  --lime: #ddbf85;
+  --paper: #f7f6f1;
+  --line: #dcdedc;
+  --green: #365a7e;
+  --green-soft: #eaf0f6;
+  --accent: #9c7139;
+  --accent-strong: #845d2d;
+  --accent-hover: #704e26;
+  --accent-soft: #f0e8da;
+  --accent-ink: #805e32;
+  --font: "Classroom Xihei", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+body {
+  font-family: var(--font);
+  background: var(--paper);
+  font-size: 15px;
+}
+.sidebar,
+.login-art {
+  background: #192d47;
+}
+.sidebar {
+  border-right: 1px solid #cdd3d9;
+}
+.brand-mark {
+  border-radius: 3px;
+  background: #bb965e;
+}
+.brand-name {
+  font-size: 25px;
+  font-weight: 400;
+}
+.brand-name small {
+  color: #b9c7d5;
+}
+.nav a,
+.nav button {
+  border-radius: 3px;
+}
+.nav .active {
+  background: #30445e;
+  color: #ecd29e;
+  border-left-color: #c3a26a;
+}
+.topbar {
+  border-bottom: 1px solid var(--line);
+  background: #fffefa;
+}
+.topbar strong,
+h1,
+h2,
+h3,
+.panel-header h2 {
+  font-weight: 400;
+}
+.page-heading h1 {
+  font-size: 36px;
+  letter-spacing: 0.5px;
+}
+.page-heading > p {
+  font-size: 14px;
+}
+.panel,
+.stat-card,
+.class-card,
+.word-card,
+.assignment-card,
+.question-card,
+.exam-intro {
+  border-radius: 5px;
+  box-shadow: none;
+  background: #fffefa;
+}
+.btn {
+  border-radius: 3px;
+  box-shadow: none;
+  font-weight: 400;
+}
+.btn-primary {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+input,
+select,
+textarea {
+  border-radius: 4px;
+}
+.welcome-banner,
+.student-welcome {
+  background: #ede8dd;
+  border-radius: 5px;
+  border: 1px solid #ddd5c6;
+  color: var(--ink);
+}
+.welcome-copy .eyebrow {
+  color: #937449;
+}
+.welcome-copy h2,
+.student-welcome h2 {
+  color: #233a54;
+}
+.welcome-copy p,
+.student-welcome p {
+  color: #667787;
+}
+.banner-pill {
+  background: #fffefa;
+  color: #5c7083;
+}
+.stat-card .stat-number,
+.stat-number {
+  font-weight: 400;
+  color: #294661;
+}
+.chart-bar,
+.exam-progress > div {
+  background: #537394;
+}
+.word-sentence {
+  background: #f0f2f4;
+  color: #354d66;
+}
+.word-sentence mark,
+.question-prompt mark {
+  background: #f3e6c9;
+  color: #765528;
+}
+.badge:not(.red):not(.gold):not(.gray) {
+  background: #e9eff6;
+  color: #365a7e;
+}
+.task-class-folder,
+.task-subject-folder {
+  border-color: #d8dde2;
+  border-radius: 4px;
+}
+.task-class-folder > summary {
+  background: #edf0f3;
+}
+.task-subject-folder > summary {
+  background: #f4f2eb;
+}
+.auto-task-title {
+  background: #edf1f6;
+  border-color: #d6dfe8;
+}
+.login-art h1 em {
+  color: #dec28b;
+}
+.login-art p,
+.login-art footer {
+  color: #c4d0dc;
+}
+.login-art .eyebrow {
+  color: #dfc28c !important;
+}
+.login-art .brand-name {
+  color: white;
+}
+.login-badge {
+  color: #526b85;
+  background: #ecf1f7;
+}
+.loading-screen .brand-mark {
+  background: #ab8652;
+}
+.result-number,
+.student-score {
+  color: #365a7e;
+}
+.privacy-note {
+  line-height: 1.9;
+}
+.form-field > span {
+  font-weight: 400;
+}
+.grade-track i,
+.grade-band-track i,
+.grade-class-chart i {
+  background: #577595;
+}
+.sidebar .side-footer {
+  border-color: #3a4c63;
+}
+.sidebar .avatar {
+  background: #415872;
+  color: #f1e5cc;
+}
+.sidebar .side-footer small {
+  color: #b6c4d3;
+}
+.practice-intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 25px 30px;
+  margin-bottom: 24px;
+  border-top: 3px solid #a17b45;
+}
+.practice-intro h2 {
+  margin: 5px 0 10px;
+  font-size: 25px;
+}
+.practice-intro p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.9;
+}
+.practice-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 24px;
+  align-items: start;
+}
+.practice-setup {
+  padding: 28px;
+}
+.practice-setup h2 {
+  margin: 0 0 24px;
+}
+.practice-scope {
+  padding: 18px;
+  border: 1px solid #d9e0e7;
+  background: #eff3f7;
+  margin-bottom: 20px;
+  line-height: 1.9;
+}
+.practice-scope strong {
+  font-size: 21px;
+  color: #365575;
+  font-weight: 400;
+}
+.practice-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.practice-summary > div {
+  padding: 17px;
+  background: #eeece5;
+}
+.practice-summary small {
+  display: block;
+  color: #7c8995;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.practice-summary strong {
+  font-weight: 400;
+  font-size: 24px;
+}
+.practice-history,
+.practice-wrong-panel {
+  margin-top: 24px;
+}
+.practice-active {
+  padding: 18px 24px;
+  background: #eaf0f6;
+  border: 1px solid #d0dce7;
+  border-radius: 4px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.practice-active p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #647a8f;
+}
+.practice-wrong-list {
+  padding: 0 22px 22px;
+}
+.practice-wrong-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.practice-wrong-item strong {
+  font-weight: 400;
+}
+.practice-wrong-item small {
+  display: block;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.practice-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.practice-inline-note {
+  margin-bottom: 18px;
+  padding: 13px 18px;
+  border-left: 3px solid #b18b51;
+  background: #f3ede1;
+  color: #71604c;
+  font-size: 13px;
+}
+.practice-history .table-wrap {
+  max-height: 650px;
+}
+.practice-label {
+  color: #805e32;
+  background: #f0e8da;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+.practice-results {
+  margin-bottom: 20px;
+}
+@media (max-width: 1000px) {
+  .practice-layout {
+    grid-template-columns: 1fr;
+  }
+  .practice-intro {
+    padding: 20px;
+    gap: 15px;
+  }
+  .practice-intro h2 {
+    font-size: 22px;
+  }
+}
+@media (max-width: 600px) {
+  .practice-active,
+  .practice-intro {
+    align-items: start;
+    flex-direction: column;
+  }
+  .practice-setup {
+    padding: 20px;
+  }
+  .practice-summary {
+    gap: 7px;
+  }
+  .practice-summary > div {
+    padding: 13px 10px;
+  }
+  .practice-summary strong {
+    font-size: 21px;
+  }
+  .page-heading h1 {
+    font-size: 28px;
+  }
+}
+.word-card h3,
+.question-prompt,
+.result-number,
+.login-art h1 {
+  font-family: var(--font);
+  font-weight: 400;
+}
+.result-hero {
+  background: #edf1f5;
+  border: 1px solid #d4dfe9;
+  border-radius: 5px;
+}
+.welcome-copy h2,
+.student-welcome h2,
+.result-hero h2,
+.modal-head h2,
+.login-box h2,
+.assignment-card h3,
+.class-card h3 {
+  font-weight: 400;
+}
+.avatar {
+  background: #e5ebf1;
+  color: #36516d;
+}
