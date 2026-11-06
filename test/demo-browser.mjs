@@ -130,8 +130,12 @@ try {
     "通货膨胀",
     "fiscal policy",
   ];
-  for (let i = 0; i < answers.length; i++)
+  for (let i = 0; i < answers.length; i++) {
+    await page
+      .locator(`[data-action="exam-question"][data-question="${i}"]`)
+      .click();
     await page.locator("#exam-form input[type=text]").nth(i).fill(answers[i]);
+  }
   await page.waitForFunction(
     () =>
       document.querySelector("#save-indicator")?.textContent ===

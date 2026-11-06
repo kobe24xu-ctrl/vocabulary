@@ -322,6 +322,9 @@ const state = {
     search: "",
   },
   attempt: null,
+  examIndex: 0,
+  examPositionAttempt: null,
+  boardChartsOpen: false,
   examResult: null,
   serverOffset: 0,
   authTab: "student",
@@ -414,7 +417,7 @@ function art() {
   return `<svg class="welcome-art" viewBox="0 0 300 180" fill="none" aria-hidden="true"><circle cx="191" cy="125" r="108" fill="#eee5d5"/><circle cx="191" cy="125" r="84" stroke="#cfb78e" stroke-dasharray="3 7"/><path d="M84 125l101-20 74 37-100 25z" fill="#ab834b"/><path d="M84 125v12l75 35 100-20v-10l-100 25z" fill="#80623e"/><path d="M100 105l96-18 65 33-101 21z" fill="#FFFCF5"/><path d="M100 105v13l61 31 100-20v-9l-101 21z" fill="#E9C7A2"/><path d="M112 85l86-17 64 28-93 22z" fill="#8099af"/><path d="M112 85v13l57 29 93-21V96l-93 22z" fill="#4d6c8a"/><rect x="117" y="28" width="72" height="72" rx="8" transform="rotate(-12 117 28)" fill="#FFFFFF"/><text x="143" y="69" transform="rotate(-12 143 69)" fill="#294864" font-size="29" font-family="Georgia">Aa</text><path d="M221 55c-17-21-5-34 4-32 9 2 6 19-4 32z" fill="#526f8c"/><path d="M221 55c5-26 25-28 27-17 1 9-14 15-27 17z" fill="#a5b8c8"/><path d="M216 67l7-29" stroke="#36516d" stroke-width="2"/><path d="M73 61l5 10 11 1-8 8 1 11-10-5-9 5 1-11-8-8 11-1z" fill="#d5b782"/><circle cx="251" cy="72" r="4" fill="#ab834b"/><path d="M73 145l6 6m-6 0l6-6" stroke="#ab834b" stroke-width="2"/><path d="M260 160h15" stroke="#b6c1cc" stroke-width="2"/></svg>`;
 }
 function brand() {
-  return `<div class="brand"><div class="brand-mark">L<span>·</span></div><div class="brand-name">LexiClass<small>词 间 课 堂</small></div></div>`;
+  return `<div class="brand"><div class="brand-mark">${icon("book")}</div><div class="brand-name">词间课堂<small>LexiClass</small></div></div>`;
 }
 function navItems() {
   return state.user.role === "teacher"
@@ -683,7 +686,7 @@ function gradeData() {
   );
   return { all, scope, rows };
 }
-function dashboard() {
+function gradeDashboard(compact = false) {
   const a = state.analytics,
     { all, scope, rows } = gradeData();
   const projectRows = all.filter(
@@ -716,7 +719,7 @@ function dashboard() {
     color: classTone(c)[0],
   }));
   const visible = rows.filter((r) => a.band === "all" || inScoreBin(r, a.band));
-  return `${heading("教学概览", "先看整体变化，再按班级进入详细成绩报告。", `<button class="btn btn-light" data-action="nav" data-view="results">${icon("chart")}按班级查看成绩</button><button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}<section class="panel grade-filters"><label>课程项目<select data-grade="program" aria-label="成绩项目">${option("all", "全部项目", a.program)}${state.config.programs.map((p) => option(p, p, a.program)).join("")}</select></label><label>科目<select data-grade="subject" aria-label="成绩科目">${option("all", "全部科目", a.subject)}${subjects.map((s) => option(s, nameSubject(s), a.subject)).join("")}</select></label><label>周次 / Topic<select data-grade="group" aria-label="成绩周次">${option("all", "全部周次 / Topic", a.group)}${groups.map((g) => option(g, learningLabel(g), a.group)).join("")}${scope.some((r) => !r.groups.length) ? option("ungrouped", "未标注周次 / 单元", a.group) : ""}</select></label><label>班级<select data-grade="classId" aria-label="成绩班级">${option("all", "全部班级", a.classId)}${state.classes
+  return `${compact ? "" : heading("教学概览", "先看整体变化，再按班级进入详细成绩报告。", `<button class="btn btn-light" data-action="nav" data-view="results">${icon("chart")}按班级查看成绩</button><button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}<section class="panel grade-filters"><label>课程项目<select data-grade="program" aria-label="成绩项目">${option("all", "全部项目", a.program)}${state.config.programs.map((p) => option(p, p, a.program)).join("")}</select></label><label>科目<select data-grade="subject" aria-label="成绩科目">${option("all", "全部科目", a.subject)}${subjects.map((s) => option(s, nameSubject(s), a.subject)).join("")}</select></label><label>周次 / Topic<select data-grade="group" aria-label="成绩周次">${option("all", "全部周次 / Topic", a.group)}${groups.map((g) => option(g, learningLabel(g), a.group)).join("")}${scope.some((r) => !r.groups.length) ? option("ungrouped", "未标注周次 / 单元", a.group) : ""}</select></label><label>班级<select data-grade="classId" aria-label="成绩班级">${option("all", "全部班级", a.classId)}${state.classes
     .filter(
       (c) =>
         (a.program === "all" || c.program === a.program) &&
@@ -728,6 +731,60 @@ function dashboard() {
       "",
     )}</select></label><button class="btn btn-light" data-action="grade-reset">重置</button></section>${reportMetricsView(rows)}<section class="report-chart-grid"><div class="panel report-panel"><header class="report-panel-header"><div><h2>教学周平均分趋势</h2><p>点击成绩点筛选周次，收到答卷后自动更新。</p></div></header>${linePlot([{ name: "平均分", color: "#365f80", points: weekly.map((g) => ({ key: g.key, value: g.average, label: g.label })) }], { items: weekly.map((g) => ({ key: g.key, label: g.label })), action: "grade-group", selected: a.group })}</div><div class="panel report-panel"><header class="report-panel-header"><div><h2>成绩分布</h2><p>点击区间查看相应学生。</p></div></header>${donutPlot(scoreBins(rows), { action: "grade-band", selected: a.band, average: gradeAverage(rows) })}${a.band !== "all" ? '<button class="btn btn-quiet" data-action="grade-band" data-key="all">显示全部分数段</button>' : ""}</div></section><section class="panel report-panel"><header class="report-panel-header"><div><h2>班级表现</h2><p>点击班级，进入各科成绩分析。</p></div></header>${barPlot(classes, { action: "report-class" })}</section><section class="panel report-panel"><header class="report-panel-header"><div><h2>学生学习表现</h2><p>点击学生查看各科、各次考试的完整学习画像。</p></div></header>${reportStudentCards(visible)}</section><p class="report-footnote">平均分仅统计已交答卷，未交卷不会被当成零分。各教学周的考试范围按词库分组识别。</p>`;
 }
+function boardTeacherCard(task) {
+  const cls = state.classes.find((c) => task.classIds.includes(c.id));
+  const rows = reportData().filter((r) => r.taskId === task.id),
+    average = gradeAverage(rows);
+  const [status, color] = statusOf(task);
+  return `<article class="board-exam-card class-tinted" style="${classStyle(cls)}"><header><span>${esc(task.classIds.map(clsName).join("、"))}</span>${badge(status, color)}</header><button class="board-exam-open" data-action="task-results" data-id="${task.id}"><span class="board-subject">${icon(subjectIcon(taskSubjectForClass(task, cls)))}${esc(nameSubject(taskSubjectForClass(task, cls)))}</span><h3>${esc(task.title)}</h3><p>${date(task.opensAt)} 开放<br>${task.questionCount}题 / ${task.duration}分钟 / ${task.questionType === "choice" ? "五选一" : "填空题"}</p></button><div class="board-task-completion"><span>${task.submitted} / ${task.studentCount}人已提交</span>${average !== null ? `<strong>${average}<small>均分</small></strong>` : ""}</div><div class="board-card-actions"><button class="btn btn-light btn-sm" data-action="task-share" data-id="${task.id}">考试链接</button><button class="btn btn-quiet btn-sm" data-action="task-results" data-id="${task.id}">查看成绩${icon("arrow")}</button></div></article>`;
+}
+function boardColumn(
+  title,
+  items,
+  { student = false, emptyText = "这里暂时没有考试。", kind = "later" } = {},
+) {
+  return `<section class="board-column"><header><i class="board-status-dot ${kind}"></i><h2>${title}</h2><span>${items.length}</span></header><div>${
+    items
+      .slice(0, 3)
+      .map(student ? studentTaskCard : boardTeacherCard)
+      .join("") ||
+    `<div class="board-column-empty">${icon(kind === "done" ? "check" : "calendar")}<p>${emptyText}</p></div>`
+  }</div>${items.length > 3 ? `<button class="btn btn-quiet board-more" data-action="nav" data-view="${student && kind === "done" ? "history" : "tasks"}">查看全部 ${items.length} 场${icon("arrow")}</button>` : ""}</section>`;
+}
+function dashboard() {
+  const open = state.tasks
+    .filter((t) => t.opensAt <= now() && t.closesAt > now())
+    .sort((a, b) => a.closesAt - b.closesAt);
+  const upcoming = state.tasks
+    .filter((t) => t.opensAt > now())
+    .sort((a, b) => a.opensAt - b.opensAt);
+  const done = state.tasks
+    .filter((t) => t.closesAt <= now())
+    .sort((a, b) => b.closesAt - a.closesAt);
+  return `${heading("教学概览", "按班级分色，按考试状态安排每天的教学。", `<button class="btn btn-light" data-action="nav" data-view="results">${icon("chart")}成绩分析</button><button class="btn btn-primary" data-action="create-task">${icon("plus")}发布听写</button>`)}<div class="board-class-strip">${state.classes.map((c) => `<button data-action="board-class" data-id="${c.id}" style="${classStyle(c)}"><i></i><span>${esc(c.name)}</span><small>${state.students.filter((s) => s.classId === c.id).length}人</small></button>`).join("")}</div><div class="classroom-board">${boardColumn("正在开放", open, { kind: "open", emptyText: "当前没有开放的考试。" })}${boardColumn("接下来", upcoming, { kind: "later", emptyText: "下一场听写，随时可以安排。" })}${boardColumn("已经结束", done, { kind: "done", emptyText: "考试结束后，在这里查看成绩。" })}</div><details class="board-teaching-progress" data-board-charts ${state.boardChartsOpen ? "open" : ""}><summary><span>${icon("chart")}教学进展与成绩图表</span><span>按项目、班级、科目和周次查看 ${icon("down")}</span></summary><div>${gradeDashboard(true)}</div></details>`;
+}
+function studentDashboard() {
+  const pending = state.tasks.filter(
+    (t) => !t.attempt?.submittedAt && t.closesAt > now(),
+  );
+  const open = pending
+    .filter((t) => t.opensAt <= now())
+    .sort((a, b) => a.closesAt - b.closesAt);
+  const upcoming = pending
+    .filter((t) => t.opensAt > now())
+    .sort((a, b) => a.opensAt - b.opensAt);
+  const done = state.tasks
+    .filter((t) => t.attempt?.submittedAt)
+    .sort((a, b) => b.attempt.submittedAt - a.attempt.submittedAt);
+  const average = done.length
+    ? mean(done.map((t) => ({ score: t.attempt.score })))
+    : null;
+  const due = state.mistakes.filter(
+    (m) => !m.resolved && m.nextReview <= now(),
+  );
+  return `${heading("我的学习", `${esc(state.user.name)} / ${esc(state.user.className)}`, `<button class="btn btn-light" data-action="nav" data-view="learning">${icon("book")}词汇学习</button><button class="btn btn-primary" data-action="nav" data-view="practice">${icon("repeat")}自主模拟</button>`)}<div class="board-student-summary"><span style="${classStyle(state.user.classId)}"><i></i>${esc(state.user.className)}</span><span>已完成 ${done.length} 场听写</span><span>平均成绩 ${average ?? "—"} 分</span><button data-action="nav" data-view="review">${due.length} 个错词待复习 ${icon("arrow")}</button></div><div class="classroom-board student-board">${boardColumn("现在可以参加", open, { student: true, kind: "open", emptyText: "现在没有开放的测试，先学一组词汇吧。" })}${boardColumn("接下来", upcoming, { student: true, kind: "later", emptyText: "老师发布新考试后，会自动显示在这里。" })}${boardColumn("已经完成", done, { student: true, kind: "done", emptyText: "交卷后可以随时回看成绩。" })}</div><div id="student-calendar-root">${studentCalendar()}</div>`;
+}
+
 function option(value, label, current) {
   return `<option value="${esc(value)}" ${current === value ? "selected" : ""}>${esc(label)}</option>`;
 }
@@ -874,6 +931,10 @@ function studentsView() {
     empty("没有匹配的学生", "可调整搜索条件，或向这个班级添加学生。")
   }</div>`;
 }
+function wordGrammar(word) {
+  if (!word.partOfSpeech) return "";
+  return `<div class="word-grammar"><span>${esc(word.partOfSpeech)}</span>${word.partOfSpeechNote ? `<p>${esc(word.partOfSpeechNote)}</p>` : ""}</div>`;
+}
 function wordSubjects(program) {
   if (program === "all") return state.config.subjects;
   const available = new Set([
@@ -886,6 +947,8 @@ function wordSubjects(program) {
   return state.config.subjects.filter((subject) => available.has(subject));
 }
 function libraryGroupLabel(group) {
+  const semester = /^Term\s+(\d+)\s*·\s*Week\s+(\d+)/i.exec(group || "");
+  if (semester) return `第${semester[1]}学期 · 第${Number(semester[2])}周`;
   const week = /^Week\s*(\d+)/i.exec(group || "");
   if (week) return `第${Number(week[1])}周 · W${week[1].padStart(2, "0")}`;
   return group;
@@ -949,7 +1012,7 @@ function wordsView() {
       .slice(0, state.wordLimit || 60)
       .map(
         (w) =>
-          `<article class="word-card">${badge(nameSubject(state.filter.subject), "gray")}${program === "UOW 沃隆港预科" && w.program === "UNSW 新南预科" ? badge("新南共用词库") : ""}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary word-chinese-context">${esc(w.sentenceZh)}</p><footer><span>${esc((w.groups || []).map(libraryGroupLabel).join(" · ") || w.source)}</span></footer></article>`,
+          `<article class="word-card">${badge(nameSubject(state.filter.subject), "gray")}${program === "UOW 沃隆港预科" && w.program === "UNSW 新南预科" ? badge("新南共用词库") : ""}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p>${wordGrammar(w)}<div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary word-chinese-context">${esc(w.sentenceZh)}</p><footer><span>${esc((w.groups || []).map(libraryGroupLabel).join(" · ") || w.source)}</span></footer></article>`,
       )
       .join(
         "",
@@ -1386,7 +1449,7 @@ function learningView() {
     .slice(0, limit)
     .map(
       (w) =>
-        `<article class="word-card">${badge(nameSubject(w.subject), "gray")}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9">${esc(w.sentenceZh)}</p><footer><span>${esc(w.groups.join(" · ") || "未分组")}</span></footer></article>`,
+        `<article class="word-card">${badge(nameSubject(w.subject), "gray")}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p>${wordGrammar(w)}<div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9">${esc(w.sentenceZh)}</p><footer><span>${esc(w.groups.map(libraryGroupLabel).join(" · ") || "未分组")}</span></footer></article>`,
     )
     .join(
       "",
@@ -1404,7 +1467,7 @@ async function studyTask(taskId) {
   modal(
     "考前学习 · 本次考试词汇",
     `${task.title} · ${nameSubject(task.subject)} · ${words.length} 个词汇`,
-    `<div class="alert">考试时间：${date(task.opensAt, true)} — ${date(task.closesAt, true)}<br>这是本次考试要考的词汇。提前学习不计时；点击「开始测试」才开始计时。</div><div class="study-word-grid">${words.map((w, i) => `<article class="word-card"><span class="eyebrow">WORD ${String(i + 1).padStart(2, "0")}</span><h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p><div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9">${esc(w.sentenceZh)}</p></article>`).join("")}</div>`,
+    `<div class="alert">考试时间：${date(task.opensAt, true)} — ${date(task.closesAt, true)}<br>这是本次考试要考的词汇。提前学习不计时；点击「开始测试」才开始计时。</div><div class="study-word-grid">${words.map((w, i) => `<article class="word-card"><span class="eyebrow">WORD ${String(i + 1).padStart(2, "0")}</span><h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p>${wordGrammar(w)}<div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary" style="line-height:1.9">${esc(w.sentenceZh)}</p></article>`).join("")}</div>`,
     `<button class="btn btn-primary" data-action="close-modal">完成学习</button>`,
     true,
   );
@@ -1507,7 +1570,7 @@ function studentPracticeView() {
     data.attempts.filter((a) => a.submittedAt && !a.abandoned).length;
   return `${h}<section class="panel practice-intro"><div><div class="eyebrow">YOUR OWN PRACTICE ROOM</div><h2>按你的节奏，再练一遍。</h2><p>不需要老师发布，不限制练习次数。选择本班科目与周次，开始你自己的模拟考试。</p></div><span class="practice-label">课程词库 · 独立模拟成绩</span></section>
   ${active ? `<section class="practice-active"><div><strong>有一场未完成的模拟</strong><p>${esc(active.title)} · ${active.questionCount} 题 · 还可继续作答</p></div><button class="btn btn-light" data-action="practice-open" data-id="${active.id}">继续模拟 ${icon("arrow")}</button></section>` : ""}
-  <div class="practice-layout"><section class="panel practice-setup"><h2>创建模拟考试</h2><form id="practice-form"><div class="form-grid"><label class="form-field"><span>科目</span><select name="subject" data-practice-setting="subject" aria-label="模拟科目">${subjects.map((v) => option(v, nameSubject(v), s.subject)).join("")}</select></label><label class="form-field"><span>周次 / Topic</span><select name="wordGroup" data-practice-setting="wordGroup" aria-label="模拟周次" required>${groups.map((g) => option(g, g, s.wordGroup)).join("")}</select></label><label class="form-field"><span>题型</span><select name="questionType" data-practice-setting="questionType">${option("choice", "选择题 · 五选一", s.questionType)}${option("fill", "填空题 · 手动输入", s.questionType)}</select></label><label class="form-field"><span>翻译方向</span><select name="mode" data-practice-setting="mode">${["mixed", "en-zh", "zh-en"].map((m) => option(m, modeName(m), s.mode)).join("")}</select></label><label class="form-field full"><span>模拟时长（分钟）</span><input type="number" name="duration" value="${esc(s.duration)}" min="1" max="180" required data-practice-setting="duration"></label></div><label class="check-item"><input type="checkbox" name="mistakesOnly" data-practice-setting="mistakesOnly" ${s.mistakesOnly ? "checked" : ""}><span>只练本周的模拟错词 <small>（${wrongIds.size} 个词汇）</small></span></label><div class="practice-scope"><strong>${questionCount} 题</strong><br>${esc(nameSubject(s.subject))} · ${esc(s.wordGroup || "暂无周次")}<br>${s.mistakesOnly ? "从本周的模拟错词出题。" : "本周词库全部词汇，不依赖任何听写任务。"}<br>每次打乱题序，变换提问方式与选项。</div>${active ? '<p class="privacy-note">开始新模拟会结束上一场未交卷的练习；结束的练习不计成绩。</p>' : ""}<button type="submit" class="btn btn-primary" ${!questionCount ? "disabled" : ""}>${icon("plus")}重新出题并开始</button><p class="privacy-note">模拟考试自动保存，可刷新继续。交卷后查看结果，也可以立刻再练同一周。</p></form></section>
+  <div class="practice-layout"><section class="panel practice-setup"><h2>创建模拟考试</h2><form id="practice-form"><div class="form-grid"><label class="form-field"><span>科目</span><select name="subject" data-practice-setting="subject" aria-label="模拟科目">${subjects.map((v) => option(v, nameSubject(v), s.subject)).join("")}</select></label><label class="form-field"><span>周次 / Topic</span><select name="wordGroup" data-practice-setting="wordGroup" aria-label="模拟周次" required>${groups.map((g) => option(g, libraryGroupLabel(g), s.wordGroup)).join("")}</select></label><label class="form-field"><span>题型</span><select name="questionType" data-practice-setting="questionType">${option("choice", "选择题 · 五选一", s.questionType)}${option("fill", "填空题 · 手动输入", s.questionType)}</select></label><label class="form-field"><span>翻译方向</span><select name="mode" data-practice-setting="mode">${["mixed", "en-zh", "zh-en"].map((m) => option(m, modeName(m), s.mode)).join("")}</select></label><label class="form-field full"><span>模拟时长（分钟）</span><input type="number" name="duration" value="${esc(s.duration)}" min="1" max="180" required data-practice-setting="duration"></label></div><label class="check-item"><input type="checkbox" name="mistakesOnly" data-practice-setting="mistakesOnly" ${s.mistakesOnly ? "checked" : ""}><span>只练本周的模拟错词 <small>（${wrongIds.size} 个词汇）</small></span></label><div class="practice-scope"><strong>${questionCount} 题</strong><br>${esc(nameSubject(s.subject))} · ${esc(s.wordGroup || "暂无周次")}<br>${s.mistakesOnly ? "从本周的模拟错词出题。" : "本周词库全部词汇，不依赖任何听写任务。"}<br>每次打乱题序，变换提问方式与选项。</div>${active ? '<p class="privacy-note">开始新模拟会结束上一场未交卷的练习；结束的练习不计成绩。</p>' : ""}<button type="submit" class="btn btn-primary" ${!questionCount ? "disabled" : ""}>${icon("plus")}重新出题并开始</button><p class="privacy-note">模拟考试自动保存，可刷新继续。交卷后查看结果，也可以立刻再练同一周。</p></form></section>
   <aside><div class="practice-summary"><div><small>累计完成</small><strong>${completed}</strong></div><div><small>模拟均分</small><strong>${data.stats?.average ?? "—"}</strong></div><div><small>待巩固错词</small><strong>${data.mistakes.length}</strong></div></div><section class="panel"><div class="panel-header"><div><h2>练习错词</h2><p>${esc(nameSubject(s.subject))} · ${esc(s.wordGroup)}</p></div></div><div class="practice-wrong-list">${
     wrong.length
       ? wrong
@@ -1640,14 +1703,6 @@ function paintStudentCalendar() {
     node.innerHTML = studentCalendar();
 }
 
-function studentDashboard() {
-  const pending = state.tasks.filter(
-      (t) => !t.attempt?.submittedAt && t.closesAt > now(),
-    ),
-    done = state.tasks.filter((t) => t.attempt?.submittedAt),
-    due = state.mistakes.filter((m) => !m.resolved && m.nextReview <= now());
-  return `${heading("我的学习", "每天一点积累，让专业课里的每一句话都更清晰。", `<button class="btn btn-primary" data-action="nav" data-view="practice">${icon("clipboard")}自主模拟 · 随时练习</button><button class="btn btn-light" data-action="nav" data-view="learning">${icon("book")}词汇学习</button><button class="btn btn-light" data-action="alerts-open">${icon("bell")}查看考试提醒</button>`)}<section class="student-welcome class-tinted" style="${classStyle(state.user.classId)}"><h2>${esc(state.user.name)}，今天也要有所收获。</h2><p>${esc(state.user.className)}<br>老师已为你安排好学习内容，准备好就开始吧。</p>${art()}</section><div id="student-calendar-root">${studentCalendar()}</div><div class="stats-grid">${stat("待完成测试", pending.length, "份", "clipboard", "记得在截止时间前提交")}${stat("已完成测试", done.length, "份", "check", "每一次努力都有记录", "blue")}${stat("听写平均分", mean(done.map((t) => ({ score: t.attempt.score }))), "分", "chart", "持续练习，慢慢进步", "gold")}${stat("今天待复习", due.length, "个", "repeat", `共 ${state.mistakes.filter((m) => !m.resolved).length} 个未掌握错词`, "purple")}</div><div class="panel-header" style="padding:0 0 18px"><h2>接下来，完成这些练习</h2><button class="section-link" data-action="nav" data-view="tasks">全部测试 ${icon("arrow")}</button></div><div class="cards-grid">${pending.slice(0, 3).map(studentTaskCard).join("")}</div>${!pending.length ? empty("今天的待办已清空", "可以去错题本复习，或者回看之前的成绩。", `<button class="btn btn-primary" data-action="nav" data-view="review">${icon("repeat")}复习错题</button>`) : ""}`;
-}
 function studentTasks(history = false) {
   const tasks = state.tasks.filter((t) =>
     history ? !!t.attempt?.submittedAt : !t.attempt?.submittedAt,
@@ -1675,7 +1730,7 @@ function mistakesView() {
     )
     .join(
       "",
-    )}</div></div><div class="cards-grid">${items.map((m) => `<article class="mistake-card">${badge(nameSubject(m.question.subject), "gray")} ${badge(m.resolved ? "已掌握" : m.nextReview <= now() ? "待复习" : "学习中", m.resolved ? "" : "gold")}<h3>${esc(m.question.term)}</h3><p class="translation muted">${esc(m.question.translation)}</p><div class="word-sentence">${highlight(m.question.sentence, m.question.term)}</div><p class="table-secondary">${esc(m.question.sentenceZh)}</p><div class="task-meta" style="margin-top:14px"><span>累计错 ${m.errorCount} 次</span><span>·</span><span>连续正确 ${m.streak} / 3</span></div><p class="table-secondary" style="margin-top:5px">${m.resolved ? "已完成本轮复习" : `下次复习：${date(m.nextReview)}`}</p><button class="btn btn-light" data-action="review-word" data-id="${m.id}" ${m.resolved || m.nextReview > now() ? "disabled" : ""}>${icon("repeat")}${m.resolved ? "已经掌握" : "再练一次"}</button></article>`).join("")}</div>${!items.length ? empty("这里暂时没有错题", "完成听写后，答错或未作答的词汇会自动收录。") : ""}`;
+    )}</div></div><div class="cards-grid">${items.map((m) => `<article class="mistake-card">${badge(nameSubject(m.question.subject), "gray")} ${badge(m.resolved ? "已掌握" : m.nextReview <= now() ? "待复习" : "学习中", m.resolved ? "" : "gold")}<h3>${esc(m.question.term)}</h3><p class="translation muted">${esc(m.question.translation)}</p>${wordGrammar(m.question)}<div class="word-sentence">${highlight(m.question.sentence, m.question.term)}</div><p class="table-secondary">${esc(m.question.sentenceZh)}</p><div class="task-meta" style="margin-top:14px"><span>累计错 ${m.errorCount} 次</span><span>·</span><span>连续正确 ${m.streak} / 3</span></div><p class="table-secondary" style="margin-top:5px">${m.resolved ? "已完成本轮复习" : `下次复习：${date(m.nextReview)}`}</p><button class="btn btn-light" data-action="review-word" data-id="${m.id}" ${m.resolved || m.nextReview > now() ? "disabled" : ""}>${icon("repeat")}${m.resolved ? "已经掌握" : "再练一次"}</button></article>`).join("")}</div>${!items.length ? empty("这里暂时没有错题", "完成听写后，答错或未作答的词汇会自动收录。") : ""}`;
 }
 function highlight(text, focus) {
   const source = String(text),
@@ -1685,10 +1740,98 @@ function highlight(text, focus) {
 }
 const answerAttrs =
   'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"';
-function examView() {
-  const a = state.attempt;
-  return `<div class="exam-layout">${a.task.practice ? `<div class="practice-inline-note">自主模拟 · 可不限次数练习 <button class="btn btn-quiet btn-sm" data-action="nav" data-view="practice">保存并返回模拟设置</button></div>` : ""}<div class="exam-top"><div><span class="eyebrow">CONTEXTUAL PRACTICE</span><h2>${esc(a.task.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p></div><div class="exam-clock mono" id="exam-clock">--:--</div></div><div class="alert">请翻译场景句中高亮的词汇或短语。答题框已关闭浏览器自动纠错、拼写检查和自动补全；请同时关闭输入法的联想纠错。到时会按服务端已保存答案自动交卷。</div><div class="exam-progress"><div id="exam-progress-fill" style="width:${(Object.values(a.attempt.answers).filter((v) => v.trim()).length / a.questions.length) * 100}%"></div></div><form id="exam-form">${a.questions.map((q, i) => `<article class="question-card"><div class="question-label"><span>QUESTION ${String(i + 1).padStart(2, "0")} / ${String(a.questions.length).padStart(2, "0")}</span>${badge(`${q.choices ? "选择题" : "填空题"} · ${modeName(q.direction)}`, "gray")}</div><h3>${q.choices ? (q.direction === "zh-en" ? "请选择高亮词义对应的英文词汇" : "请选择高亮词汇在本句中的含义") : q.direction === "zh-en" ? "请写出高亮词汇对应的英文" : "请写出高亮词汇在本句中的中文含义"}</h3><div class="question-prompt">${highlight(q.prompt, q.focus)}</div>${q.choices ? q.choices.map((c, j) => `<label class="choice-label"><input type="radio" name="${q.id}" value="${esc(c)}" ${a.attempt.answers[q.id] === c ? "checked" : ""}><span>${String.fromCharCode(65 + j)}.</span>${esc(c)}</label>`).join("") : `<label class="form-field"><span class="visually-hidden">第 ${i + 1} 题答案</span><input name="${q.id}" type="text" lang="${q.direction === "zh-en" ? "en" : "zh-CN"}" ${answerAttrs} maxlength="2000" placeholder="${q.direction === "zh-en" ? "在此输入英文词汇或短语…" : "在此输入中文释义…"}" value="${esc(a.attempt.answers[q.id] || "")}"></label>`}</article>`).join("")}<div class="exam-sticky"><div><div class="save-indicator" id="save-indicator">${icon("shield")} 已保存到服务器</div><small class="muted" id="answered-count">已作答 ${Object.values(a.attempt.answers).filter((v) => v.trim()).length} / ${a.questions.length} 题</small></div><button type="button" class="btn btn-primary" data-action="confirm-submit" id="submit-button">${a.task.practice ? "提交模拟考试" : "提交本次听写"} ${icon("arrow")}</button></div></form></div>`;
+let autoQuestionTimer;
+function questionPositionKey() {
+  return `classwords-question:${state.attempt?.attempt.id || ""}`;
 }
+function currentQuestionIndex() {
+  const a = state.attempt;
+  if (!a) return 0;
+  if (state.examPositionAttempt !== a.attempt.id) {
+    let index = 0;
+    try {
+      index =
+        Math.trunc(Number(sessionStorage.getItem(questionPositionKey()))) || 0;
+    } catch {}
+    state.examIndex = Math.min(a.questions.length - 1, Math.max(0, index));
+    state.examPositionAttempt = a.attempt.id;
+  }
+  return state.examIndex || 0;
+}
+function refreshQuestionNavigator() {
+  const a = state.attempt;
+  if (!a) return;
+  const answered = Object.values(a.attempt.answers).filter((v) =>
+    v.trim(),
+  ).length;
+  $$("#question-navigation [data-question]").forEach((b) => {
+    const index = Number(b.dataset.question),
+      q = a.questions[index];
+    const done = !!a.attempt.answers[q.id]?.trim();
+    b.classList.toggle("answered", done);
+    b.classList.toggle("current", index === currentQuestionIndex());
+    b.setAttribute(
+      "aria-current",
+      index === currentQuestionIndex() ? "step" : "false",
+    );
+    b.setAttribute(
+      "aria-label",
+      `第${index + 1}题，${done ? "已作答" : "未作答"}`,
+    );
+  });
+  if ($("#answered-count"))
+    $("#answered-count").textContent =
+      `已作答 ${answered} / ${a.questions.length} 题`;
+  if ($("#question-answered"))
+    $("#question-answered").textContent =
+      `${answered} / ${a.questions.length} 已作答`;
+  if ($("#exam-progress-fill"))
+    $("#exam-progress-fill").style.width =
+      `${(answered / a.questions.length) * 100}%`;
+}
+function showExamQuestion(index, focus = true) {
+  clearTimeout(autoQuestionTimer);
+  const a = state.attempt;
+  if (!a) return;
+  readAnswers();
+  const next = Math.min(
+    a.questions.length - 1,
+    Math.max(0, Number(index) || 0),
+  );
+  state.examIndex = next;
+  try {
+    sessionStorage.setItem(questionPositionKey(), String(next));
+  } catch {}
+  $$("#exam-form [data-question-index]").forEach(
+    (card) => (card.hidden = Number(card.dataset.questionIndex) !== next),
+  );
+  if ($("#exam-previous")) $("#exam-previous").disabled = next === 0;
+  if ($("#exam-next"))
+    $("#exam-next").disabled = next === a.questions.length - 1;
+  if ($("#current-question-label"))
+    $("#current-question-label").textContent =
+      `第 ${next + 1} / ${a.questions.length} 题`;
+  refreshQuestionNavigator();
+  if (focus) {
+    const card = $(`#exam-form [data-question-index="${next}"]`);
+    card?.querySelector("h3")?.focus({ preventScroll: true });
+    card?.scrollIntoView({
+      block: "start",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+    });
+  }
+}
+function examView() {
+  const a = state.attempt,
+    index = currentQuestionIndex();
+  const answered = Object.values(a.attempt.answers).filter((v) =>
+    v.trim(),
+  ).length;
+  return `<div class="exam-layout">${a.task.practice ? `<div class="practice-inline-note">自主模拟 <button class="btn btn-quiet btn-sm" data-action="nav" data-view="practice">保存并返回模拟设置</button></div>` : ""}<header class="exam-top"><div><h2>${esc(a.task.title)}</h2><p class="attempt-user">答题人：${esc(state.user.name)} · ${esc(state.user.className)}</p></div><div><span class="exam-timer-caption">剩余答题时间</span><div class="exam-clock mono" id="exam-clock">--:--</div></div></header><div class="exam-instructions">${icon("check")}点击选项即记下答案，并进入下一题。可用上一题、下一题或题号返回检查；最后统一交卷。</div><div class="exam-progress"><div id="exam-progress-fill" style="width:${(answered / a.questions.length) * 100}%"></div></div><div class="exam-workspace"><form id="exam-form" class="exam-paper">${a.questions.map((q, i) => `<article class="question-card" data-question-index="${i}" ${i !== index ? "hidden" : ""}><div class="question-label"><span>第 ${i + 1} / ${a.questions.length} 题</span>${badge(`${q.choices ? "选择题" : "填空题"} · ${modeName(q.direction)}`, "gray")}</div><h3 tabindex="-1">${q.choices ? (q.direction === "zh-en" ? "请选择对应的英文词汇" : "请选择词汇在本句中的含义") : q.direction === "zh-en" ? "请写出对应的英文词汇" : "请写出词汇在本句中的中文含义"}</h3><div class="question-prompt">${highlight(q.prompt, q.focus)}</div>${q.choices ? `<div class="question-options">${q.choices.map((c, j) => `<label class="choice-label"><input type="radio" name="${q.id}" value="${esc(c)}" ${a.attempt.answers[q.id] === c ? "checked" : ""}><span class="choice-letter">${String.fromCharCode(65 + j)}</span><span class="choice-text">${esc(c)}</span><span class="choice-picked">${icon("check")}</span></label>`).join("")}</div>` : `<label class="form-field"><span>你的答案</span><input name="${q.id}" type="text" lang="${q.direction === "zh-en" ? "en" : "zh-CN"}" ${answerAttrs} maxlength="2000" placeholder="${q.direction === "zh-en" ? "输入英文词汇或短语…" : "输入中文释义…"}" value="${esc(a.attempt.answers[q.id] || "")}"></label><p class="answer-input-note">已请求关闭浏览器自动纠错；请同时关闭系统输入法的联想纠正。</p>`}</article>`).join("")}<div class="question-page-controls"><button id="exam-previous" type="button" class="btn btn-light" data-action="exam-previous" ${index === 0 ? "disabled" : ""}>${icon("back")}上一题</button><span id="current-question-label">第 ${index + 1} / ${a.questions.length} 题</span><button id="exam-next" type="button" class="btn btn-light" data-action="exam-next" ${index === a.questions.length - 1 ? "disabled" : ""}>下一题${icon("arrow")}</button></div><div class="exam-sticky"><div><div class="save-indicator" id="save-indicator">${icon("shield")} 已保存到服务器</div><small class="muted" id="answered-count">已作答 ${answered} / ${a.questions.length} 题</small></div><button type="button" class="btn btn-primary" data-action="confirm-submit" id="submit-button">${a.task.practice ? "提交模拟考试" : "提交本次听写"}${icon("arrow")}</button></div></form><aside class="question-navigation" aria-label="答题导航"><div><h3>答题检查</h3><span id="question-answered">${answered} / ${a.questions.length} 已作答</span></div><div class="question-number-grid" id="question-navigation">${a.questions.map((q, i) => `<button type="button" data-action="exam-question" data-question="${i}" class="${a.attempt.answers[q.id]?.trim() ? "answered" : ""} ${i === index ? "current" : ""}" aria-current="${i === index ? "step" : "false"}" aria-label="第${i + 1}题，${a.attempt.answers[q.id]?.trim() ? "已作答" : "未作答"}">${i + 1}</button>`).join("")}</div><div class="question-navigation-legend"><span><i class="answer-done"></i>已作答</span><span><i></i>未作答</span></div><button class="btn btn-light btn-sm" data-action="exam-unanswered">检查未答题</button><p>点击题号可随时跳转。<br>返回后可以重新选择答案。</p></aside></div></div>`;
+}
+
 function formatElapsed(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "—";
   const total = Math.floor(seconds);
@@ -1766,6 +1909,8 @@ function classCourses(classId, editing = false) {
   );
 }
 function content() {
+  const charts = $("[data-board-charts]");
+  if (charts) state.boardChartsOpen = charts.open;
   if (state.attempt) return examView();
   if (state.examResult) return resultView();
   if (state.user.role === "student" && state.view === "practice")
@@ -1801,7 +1946,10 @@ function render() {
   }
   $("#app").innerHTML = shell();
   syncExamAlerts();
-  if (state.attempt) tick();
+  if (state.attempt) {
+    tick();
+    refreshQuestionNavigator();
+  }
 }
 async function load() {
   if (!state.user) return;
@@ -2049,7 +2197,7 @@ function taskWords() {
       : groups[0] || "all";
   groupSelect.innerHTML =
     option("all", "全部 Topic / 周次 / 单元", selectedGroup) +
-    groups.map((g) => option(g, g, selectedGroup)).join("");
+    groups.map((g) => option(g, libraryGroupLabel(g), selectedGroup)).join("");
   groupSelect.dataset.scope = scope;
   groupSelect.disabled = !available.length;
   const words = available.filter(
@@ -2147,7 +2295,7 @@ function addWord() {
   modal(
     "添加场景词汇",
     "同时录入词义、英文题干和中文场景，支持双向翻译。",
-    `<form id="word-form"><div class="form-grid"><label class="form-field"><span>课程项目</span><select name="program"><option value="通用示例">跨项目通用</option>${state.config.programs.map((p) => option(p, p)).join("")}</select></label><label class="form-field"><span>科目</span><select name="subject">${state.config.subjects.map((s) => option(s, nameSubject(s))).join("")}</select></label>${field("英文词汇或短语", "term", "text", "opportunity cost")}${field("标准中文释义", "translation", "text", "机会成本")}<label class="form-field full"><span>英文场景 / 题干（必须包含该英文词汇）</span><textarea name="sentence" rows="3" required placeholder="Explain the opportunity cost of choosing one investment over another."></textarea></label><label class="form-field full"><span>对应中文场景（必须包含标准中文释义）</span><textarea name="sentenceZh" rows="3" required placeholder="解释选择一种投资而放弃另一种投资的机会成本。"></textarea></label><div class="full">${field("可接受的其他中文答案（用分号分隔）", "aliases", "text", "机会代价；替代成本", false)}</div><div class="full">${field("词汇来源（供老师标识）", "source", "text", "例如：授课讲义第 3 单元", false)}</div></div></form>`,
+    `<form id="word-form"><div class="form-grid"><label class="form-field"><span>课程项目</span><select name="program"><option value="通用示例">跨项目通用</option>${state.config.programs.map((p) => option(p, p)).join("")}</select></label><label class="form-field"><span>科目</span><select name="subject">${state.config.subjects.map((s) => option(s, nameSubject(s))).join("")}</select></label>${field("英文词汇或短语", "term", "text", "opportunity cost")}${field("标准中文释义", "translation", "text", "机会成本")}${field("词性（可选）", "partOfSpeech", "text", "例如 n. 名词 / v. 动词 / 名词短语", false)}${field("词性用法介绍（可选）", "partOfSpeechNote", "text", "例如：可数名词，表示代数式中与变量相乘的系数。", false)}<label class="form-field full"><span>英文场景 / 题干（必须包含该英文词汇）</span><textarea name="sentence" rows="3" required placeholder="Explain the opportunity cost of choosing one investment over another."></textarea></label><label class="form-field full"><span>对应中文场景（必须包含标准中文释义）</span><textarea name="sentenceZh" rows="3" required placeholder="解释选择一种投资而放弃另一种投资的机会成本。"></textarea></label><div class="full">${field("可接受的其他中文答案（用分号分隔）", "aliases", "text", "机会代价；替代成本", false)}</div><div class="full">${field("词汇来源（供老师标识）", "source", "text", "例如：授课讲义第 3 单元", false)}</div></div></form>`,
     `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="word-form">保存到词库</button>`,
     true,
   );
@@ -2156,7 +2304,7 @@ function importWords() {
   modal(
     "批量导入词库",
     "上传 UTF-8 CSV，或下载模板后填写正式课程词汇。",
-    `<form id="import-form"><div class="alert">必填列：program, subject, term, translation, sentence, sentenceZh<br>可选列：aliases（中文别名）、enAliases（英文别名）、groups（Topic、周次或单元，以上均用分号分隔）、source。项目和科目请使用模板中的完整名称。每批最多 300 条。</div><button class="btn btn-light" type="button" data-action="word-template">${icon("download")}下载 CSV 模板</button><div class="file-input"><label class="form-field"><span>选择词库 CSV 文件</span><input name="csv" type="file" accept=".csv,text/csv" required></label></div></form>`,
+    `<form id="import-form"><div class="alert">必填列：program, subject, term, translation, sentence, sentenceZh<br>可选列：partOfSpeech（词性）、partOfSpeechNote（词性用法介绍）、aliases（中文别名）、enAliases（英文别名）、groups（Topic、周次或单元，以上均用分号分隔）、source。项目和科目请使用模板中的完整名称。每批最多 300 条。</div><button class="btn btn-light" type="button" data-action="word-template">${icon("download")}下载 CSV 模板</button><div class="file-input"><label class="form-field"><span>选择词库 CSV 文件</span><input name="csv" type="file" accept=".csv,text/csv" required></label></div></form>`,
     `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="import-form">导入并校验</button>`,
   );
 }
@@ -2259,7 +2407,10 @@ async function startTask(tid) {
 function readAnswers() {
   if (!state.attempt || !$("#exam-form")) return;
   const data = new FormData($("#exam-form"));
-  state.attempt.attempt.answers = Object.fromEntries(data.entries());
+  state.attempt.attempt.answers = {
+    ...state.attempt.attempt.answers,
+    ...Object.fromEntries(data.entries()),
+  };
 }
 function saveStatus(text, warning = false) {
   const el = $("#save-indicator");
@@ -2301,6 +2452,10 @@ function queueSave() {
 }
 function completeExam(a) {
   if (!state.attempt) return;
+  clearTimeout(autoQuestionTimer);
+  try {
+    sessionStorage.removeItem(questionPositionKey());
+  } catch {}
   if (a.abandoned) {
     state.attempt = null;
     submitting = false;
@@ -2438,6 +2593,43 @@ document.addEventListener("click", async (e) => {
   if (!b) return;
   const action = b.dataset.action;
   try {
+    if (action === "board-class") {
+      state.view = "classes";
+      state.filter = {
+        program: "all",
+        classId: b.dataset.id,
+        subject: "all",
+        status: "all",
+        search: "",
+      };
+      render();
+      return;
+    }
+    if (
+      [
+        "exam-previous",
+        "exam-next",
+        "exam-question",
+        "exam-unanswered",
+      ].includes(action)
+    ) {
+      if (!state.attempt) return;
+      let index = currentQuestionIndex();
+      if (action === "exam-previous") index--;
+      if (action === "exam-next") index++;
+      if (action === "exam-question") index = Number(b.dataset.question);
+      if (action === "exam-unanswered") {
+        index = state.attempt.questions.findIndex(
+          (q) => !state.attempt.attempt.answers[q.id]?.trim(),
+        );
+        if (index < 0) {
+          toast("所有题目均已作答，可以逐题检查后交卷。");
+          return;
+        }
+      }
+      showExamQuestion(index);
+      return;
+    }
     if (action === "choose-option") {
       const select = document.getElementById(b.dataset.select);
       if (!select || select.disabled) return;
@@ -3009,6 +3201,8 @@ document.addEventListener("click", async (e) => {
             "sentenceZh",
             "aliases",
             "source",
+            "partOfSpeech",
+            "partOfSpeechNote",
           ],
           [
             state.config.programs[0],
@@ -3019,6 +3213,8 @@ document.addEventListener("click", async (e) => {
             "解释选择一种投资而放弃另一种投资的机会成本。",
             "机会代价;替代成本",
             "教师讲义示例",
+            "n. phr. 名词短语",
+            "名词短语，表示作出选择时放弃的次优机会的价值。",
           ],
         ]),
       );
@@ -3203,7 +3399,7 @@ document.addEventListener("click", async (e) => {
       modal(
         "让每一次听写更有效",
         "词间课堂使用说明",
-        `<ol class="install-steps">${state.user.role === "teacher" ? "<li>按 UNSW / NCUK / UOW 创建班级，批量添加姓名。</li><li>将每位学生的个人开通入口私下发给本人，首次设置网页账号和密码。</li><li>添加或导入学科词汇、双语场景句与可接受答案。</li><li>发布任务时选择项目、科目、班级或个人，设置时间，复制考试链接发到班级群。</li><li>在成绩分析里按班级查看姓名、分数和逐题答案，导出 CSV。</li>" : "<li>首次用老师的学习码开通账号；之后直接在网页中用账号密码登录。</li><li>打开老师发来的考试链接，登录后点击开始，不需要安装客户端。</li><li>在开放时间内开始测试；开始后计时持续进行。</li><li>输入答案会自动保存，提交后查看成绩与错题。</li><li>按错题本提示反复复习；老师发布的科目无需自行选择。</li>"}</ol><div class="alert" style="margin-top:18px">答题框已请求关闭浏览器纠错。系统或输入法的自动纠正需在电脑设置中另行关闭；此应用不能强制更改系统输入法。联网异常时请保持答题页打开，确认保存状态。</div><p class="privacy-note">内置词库为原创教学示例，不是官方课程词表。未接入官方考纲，也未使用 AI 模糊判分；译文按参考答案和教师提供的可接受答案匹配。</p>`,
+        `<ol class="install-steps">${state.user.role === "teacher" ? "<li>按 UNSW / NCUK / UOW 创建班级，批量添加姓名。</li><li>将每位学生的个人开通入口私下发给本人，首次设置网页账号和密码。</li><li>添加或导入学科词汇、双语场景句与可接受答案。</li><li>发布任务时选择项目、科目、班级或个人，设置时间，复制考试链接发到班级群。</li><li>在成绩分析里按班级查看姓名、分数和逐题答案，导出 CSV。</li>" : "<li>首次用老师的学习码开通账号；之后直接在网页中用账号密码登录。</li><li>打开老师发来的考试链接，登录后点击开始，不需要安装客户端。</li><li>在开放时间内开始测试；开始后计时持续进行。</li><li>输入答案会自动保存，提交后查看成绩与错题。</li><li>按错题本提示反复复习；老师发布的科目无需自行选择。</li>"}</ol><div class="alert" style="margin-top:18px">答题框已请求关闭浏览器纠错。系统或输入法的自动纠正需在电脑设置中另行关闭；此应用不能强制更改系统输入法。联网异常时请保持答题页打开，确认保存状态。</div><p class="privacy-note">词库按班级实际课程维护，双语场景用于学习与听写。主观题按已配置的语义判分与参考答案规则评分。</p>`,
       );
   } catch (error) {
     toast(error.message || "操作失败，请重试。", true);
@@ -3452,6 +3648,7 @@ document.addEventListener("input", (e) => {
   const el = e.target;
   if (el.closest("#exam-form")) {
     readAnswers();
+    refreshQuestionNavigator();
     saveVersion++;
     saveStatus("尚有答案等待保存…");
     const count = Object.values(state.attempt.attempt.answers).filter((v) =>
@@ -3489,6 +3686,24 @@ document.addEventListener("beforeinput", (e) => {
 });
 document.addEventListener("change", (e) => {
   const el = e.target;
+  if (el.matches('#exam-form input[type="radio"]')) {
+    const attempt = state.attempt;
+    if (!attempt) return;
+    const index = Number(
+      el.closest("[data-question-index]").dataset.questionIndex,
+    );
+    readAnswers();
+    refreshQuestionNavigator();
+    clearTimeout(saveTimer);
+    queueSave().catch(() => {});
+    clearTimeout(autoQuestionTimer);
+    if (index < attempt.questions.length - 1)
+      autoQuestionTimer = setTimeout(() => {
+        if (state.attempt === attempt && currentQuestionIndex() === index)
+          showExamQuestion(index + 1);
+      }, 200);
+    return;
+  }
   if (el.hasAttribute("data-report-student")) {
     if (el.value) openStudentReport(el.value);
     return;
@@ -3559,6 +3774,9 @@ document.addEventListener("change", (e) => {
 document.addEventListener(
   "toggle",
   (e) => {
+    if (!e.target.isConnected) return;
+    if (e.target.hasAttribute?.("data-board-charts"))
+      state.boardChartsOpen = e.target.open;
     if (e.target.dataset?.taskFolder)
       state.taskFolders[e.target.dataset.taskFolder] = e.target.open;
   },

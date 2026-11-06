@@ -13,6 +13,8 @@ export const REPORT_COLORS = [
 export const completedGrade = (r) =>
   r.state === "submitted" && Number.isFinite(r.score);
 export const learningLabel = (group) => {
+  const semester = /^Term\s+(\d+)\s*·\s*Week\s+(\d+)/i.exec(group || "");
+  if (semester) return `第${semester[1]}学期第${Number(semester[2])}周`;
   const match = /^Week\s*(\d+)/i.exec(group || "");
   return match ? `第${Number(match[1])}周` : group || "未标注分组";
 };

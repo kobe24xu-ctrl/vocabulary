@@ -41,6 +41,9 @@ def load_words(path):
             value = word.get(field)
             if not isinstance(value, str) or not value.strip() or len(value) > limit:
                 raise ValueError('Invalid field: ' + field)
+        for field, limit in [('partOfSpeech',100),('partOfSpeechNote',300)]:
+            if field in word and (not isinstance(word[field],str) or len(word[field]) > limit):
+                raise ValueError('Invalid field: ' + field)
         for field, limit, length in [('aliases', 20, 150), ('enAliases', 20, 150), ('groups', 30, 100)]:
             values = word.setdefault(field, [])
             if not isinstance(values, list) or len(values) > limit or any(

@@ -70,6 +70,14 @@ function validateWord(raw) {
     program: raw.program || "通用示例",
     term: required(raw.term, "英文词汇", 150),
     translation: required(raw.translation, "中文释义", 150),
+    ...(raw.partOfSpeech
+      ? {
+          partOfSpeech: required(raw.partOfSpeech, "词性", 100),
+          partOfSpeechNote: raw.partOfSpeechNote
+            ? required(raw.partOfSpeechNote, "词性用法介绍", 300)
+            : "",
+        }
+      : {}),
     sentence: required(raw.sentence, "英文场景句", 2000),
     sentenceZh: required(raw.sentenceZh, "中文场景句", 2000),
     aliases: Array.isArray(raw.aliases)

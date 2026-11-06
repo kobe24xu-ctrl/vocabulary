@@ -231,8 +231,12 @@ try {
     "通货膨胀",
     "fiscal policy",
   ];
-  for (let i = 0; i < webAnswers.length; i++)
+  for (let i = 0; i < webAnswers.length; i++) {
+    await web
+      .locator(`[data-action="exam-question"][data-question="${i}"]`)
+      .click();
     await web.locator("#exam-form input[type=text]").nth(i).fill(webAnswers[i]);
+  }
   await web.waitForFunction(
     () =>
       document.querySelector("#save-indicator")?.textContent ===
@@ -365,8 +369,12 @@ try {
     "不确定",
     "aggregate demand",
   ];
-  for (let i = 0; i < answers.length; i++)
+  for (let i = 0; i < answers.length; i++) {
+    await page
+      .locator(`[data-action="exam-question"][data-question="${i}"]`)
+      .click();
     await page.locator("#exam-form input[type=text]").nth(i).fill(answers[i]);
+  }
   await page.waitForFunction(
     () =>
       document.querySelector("#save-indicator")?.textContent ===

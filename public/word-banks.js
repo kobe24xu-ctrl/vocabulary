@@ -21,6 +21,15 @@ export const SHARED_WORD_BANKS = [
   },
 ];
 export function wordAvailableFor(word, program, subject = "all") {
+  if (word.archived) return false;
+  if (program === "UNSW 新南预科" && subject === "Mathematics")
+    return word.program === program && word.subject === subject;
+  if (
+    program === "UNSW 新南预科" &&
+    word.program === "通用示例" &&
+    word.subject === "Mathematics"
+  )
+    return false;
   if (program === "all") return subject === "all" || word.subject === subject;
   if (program === "NCUK 国际预科") {
     if (
@@ -119,6 +128,12 @@ export function learningWords(words, program, subjects, cls) {
         program,
         subject,
         term: w.term,
+        ...(w.partOfSpeech
+          ? {
+              partOfSpeech: w.partOfSpeech,
+              partOfSpeechNote: w.partOfSpeechNote || "",
+            }
+          : {}),
         translation: w.translation,
         sentence: w.sentence,
         sentenceZh: w.sentenceZh,

@@ -9,12 +9,15 @@ export const beijingISO = (local) => {
 };
 export function automaticTaskTitle(program, subject, group, names = {}) {
   const week = /^Week\s+(\d+)/i.exec(group || "");
+  const semester = /^Term\s+(\d+)\s*·\s*Week\s+(\d+)/i.exec(group || "");
   const label =
     !group || group === "all"
       ? "综合词汇"
-      : week
-        ? `W${week[1].padStart(2, "0")}`
-        : group.split("｜")[0];
+      : semester
+        ? `T${semester[1]} W${semester[2].padStart(2, "0")}`
+        : week
+          ? `W${week[1].padStart(2, "0")}`
+          : group.split("｜")[0];
   return `${String(program || "").split(" ")[0]} · ${names[subject] || subject} · ${label}`;
 }
 export function planSchedule({

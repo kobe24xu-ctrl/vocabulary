@@ -242,3 +242,7 @@ Cloudflare 正式版本接入 Workers AI，接受题干语境一致的中文同�
 ## NCUK Topic 词库与判分接口
 
 NCUK 商务现有 Topic A–E，经济覆盖 Topic A–Z（E–F 按原文合并），均按 Topic 学习和发布考试。后续商务内容可追加并合并分组，见 [NCUK Topic 词库](docs/ncuk-topic-banks.md)。学生登录后可在「账号设置」修改自己的密码。默认仍使用 Workers AI，选择题不调用 AI；可选 OpenAI API 适配层尚未启用，配置方式见 [判分接口说明](docs/workers-ai-grading.md)。
+
+## 赤橙界面与全科词性（2026-11-06）
+
+采用赤橙班级看板；所有现有科目词汇补充词性与用法介绍，新南数学替换为本次上传的两学期 24 周、582 词。选择题点选记录并自动进入下一题，可用题号返回检查与修改，最后统一交卷。范围、词库归档策略与核验记录见 [更新说明](docs/2026-11-orange-grammar-math.md)。

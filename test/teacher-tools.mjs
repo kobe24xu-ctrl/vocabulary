@@ -205,6 +205,7 @@ try {
   );
   await page.reload();
   await page.locator(".nav [data-view=dashboard]").click();
+  await page.locator("[data-board-charts]>summary").click();
   await page.locator("[data-grade=program]").selectOption(program);
   await page.locator("[data-grade=subject]").selectOption(subject);
   await page.locator('[data-action=grade-group][data-group="Week 05"]').click();
