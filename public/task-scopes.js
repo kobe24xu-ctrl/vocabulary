@@ -27,7 +27,13 @@ export function scopedTaskTitle(program, scopes, count, names = {}) {
 }
 
 // Published metadata contains scope and question ownership, never answers.
+// Keep scope inside the immutable question snapshot; no database migration.
+export function withTaskSelection(questions, selection) {
+  if (selection?.scopes?.length) questions[0].taskSelection = selection;
+  return questions;
+}
 export function publishedTaskScope(selection, questions) {
+  selection = questions[0]?.taskSelection || selection;
   if (!selection?.scopes?.length) return {};
   return {
     subjectScopes: selection.scopes,

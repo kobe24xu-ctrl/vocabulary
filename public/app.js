@@ -1960,7 +1960,7 @@ function render() {
     refreshQuestionNavigator();
   }
 }
-async function load() {
+async function load({ background = false } = {}) {
   if (!state.user) return;
   const teacher = state.user.role === "teacher";
   const responses = await Promise.all(
@@ -1969,7 +1969,9 @@ async function load() {
           api("/api/tasks"),
           api("/api/students"),
           api("/api/classes"),
-          api("/api/words"),
+          background && state.words.length
+            ? Promise.resolve({ words: state.words })
+            : api("/api/words"),
           api("/api/results"),
         ]
       : [api("/api/tasks"), api("/api/mistakes")],
@@ -1984,13 +1986,17 @@ async function load() {
       (r, i) => r[["tasks", "mistakes"][i]],
     );
 }
-async function refresh() {
+async function refresh({ background = false } = {}) {
   if (state.user?.role === "student" && state.view === "practice") {
     await loadPractice();
-  } else if (state.user?.role === "student" && state.view === "learning") {
+  } else if (
+    state.user?.role === "student" &&
+    state.view === "learning" &&
+    !background
+  ) {
     state.learning = await api("/api/learning");
     state.learningError = null;
-  } else await load();
+  } else await load({ background });
   if (!modalOpen && !state.attempt && !state.examResult) render();
 }
 function modal(title, description, body, footer = "", wide = false) {
@@ -3992,7 +3998,7 @@ setInterval(() => {
 setInterval(async () => {
   if (!state.user || state.attempt || document.hidden) return;
   try {
-    await refresh();
+    await refresh({ background: true });
     if (state.user.role === "student")
       for (const t of state.tasks) {
         if (

@@ -1,5 +1,9 @@
 import { prepareTaskSelection } from "../lib/task-selection.mjs";
-import { scopedTaskTitle, publishedTaskScope } from "../public/task-scopes.js";
+import {
+  scopedTaskTitle,
+  publishedTaskScope,
+  withTaskSelection,
+} from "../public/task-scopes.js";
 import {
   createExamService,
   examEventStream,
@@ -493,6 +497,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
     } catch (e) {
       fail(400, e.message);
     }
+    withTaskSelection(questions, selection.metadata);
     const task = {
       id: id(),
       owner_id: owner,
@@ -506,12 +511,11 @@ function service(env, request, headers = new Headers(SECURITY)) {
       questions: jsonString(questions),
       created_at: Date.now(),
       class_ids: jsonString(classIds),
-      selection: jsonString(selection.metadata),
     };
     return {
       task,
       sql: statement(
-        "INSERT INTO tasks(id,owner_id,title,program,subject,opens_at,closes_at,duration,audience,questions,created_at,class_ids,selection) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO tasks(id,owner_id,title,program,subject,opens_at,closes_at,duration,audience,questions,created_at,class_ids) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         ...[
           "id",
           "owner_id",
@@ -525,7 +529,6 @@ function service(env, request, headers = new Headers(SECURITY)) {
           "questions",
           "created_at",
           "class_ids",
-          "selection",
         ].map((k) => task[k]),
       ),
     };

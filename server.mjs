@@ -1,5 +1,9 @@
 import { prepareTaskSelection } from "./lib/task-selection.mjs";
-import { scopedTaskTitle, publishedTaskScope } from "./public/task-scopes.js";
+import {
+  scopedTaskTitle,
+  publishedTaskScope,
+  withTaskSelection,
+} from "./public/task-scopes.js";
 import {
   createExamService,
   examEventStream,
@@ -77,10 +81,6 @@ const one = (sql, ...p) => db.prepare(sql).get(...p);
 const all = (sql, ...p) => db.prepare(sql).all(...p);
 const run = (sql, ...p) => db.prepare(sql).run(...p);
 // Additive migration: preserve existing students, attempts and mistake records.
-if (
-  !all("PRAGMA table_info(tasks)").some((column) => column.name === "selection")
-)
-  db.exec("ALTER TABLE tasks ADD COLUMN selection TEXT NOT NULL DEFAULT '{}'");
 if (
   !all("PRAGMA table_info(users)").some((column) => column.name === "username")
 )
@@ -462,9 +462,10 @@ function taskCreate(owner, b) {
     selection.pool,
     b.questionType,
   );
+  withTaskSelection(questions, selection.metadata);
   const tid = id();
   run(
-    "INSERT INTO tasks(id,owner_id,title,program,subject,opens_at,closes_at,duration,audience,questions,created_at,class_ids,selection) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO tasks(id,owner_id,title,program,subject,opens_at,closes_at,duration,audience,questions,created_at,class_ids) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     tid,
     owner,
     title,
@@ -477,7 +478,6 @@ function taskCreate(owner, b) {
     jsonString(questions),
     Date.now(),
     jsonString(classIds),
-    jsonString(selection.metadata),
   );
   return taskView(one("SELECT * FROM tasks WHERE id=?", tid));
 }

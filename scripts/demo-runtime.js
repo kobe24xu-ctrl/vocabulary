@@ -203,12 +203,14 @@
       closesAt,
       duration,
       createdAt: Date.now(),
-      selection: selection.metadata,
-      questions: buildQuestions(
-        selection.words,
-        raw.mode,
-        selection.pool,
-        raw.questionType,
+      questions: withTaskSelection(
+        buildQuestions(
+          selection.words,
+          raw.mode,
+          selection.pool,
+          raw.questionType,
+        ),
+        selection.metadata,
       ),
     };
     db.tasks.unshift(task);
