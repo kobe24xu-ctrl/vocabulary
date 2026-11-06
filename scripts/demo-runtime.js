@@ -61,6 +61,7 @@
     (task.audience === "all" || task.audience.includes(student.id));
   const taskView = ({ questions, ...task }) => ({
     ...task,
+    ...publishedTaskScope(task.selection, questions),
     questionCount: questions.length,
     wordIds: questions.map((q) => q.wordId),
     wordGroups: [...new Set(questions.flatMap((q) => q.groups || []))],
@@ -138,19 +139,21 @@
     return { ...info(student), invite };
   }
   function taskCreate(raw) {
+    const selection = prepareTaskSelection(raw, {
+      words: db.words,
+      classes: db.classes,
+    });
     if (raw.autoTitle || !raw.title)
       raw = {
         ...raw,
-        title: automaticTaskTitle(
+        title: scopedTaskTitle(
           raw.program,
-          raw.subject,
-          raw.wordGroup,
+          selection.scopes,
+          selection.words.length,
           SUBJECT_NAMES,
         ),
       };
     if (!raw.title?.trim()) reject("请填写任务名称。");
-    if (!PROGRAMS.includes(raw.program) || !SUBJECTS.includes(raw.subject))
-      reject("请选择有效课程项目和科目。");
     if (
       !Array.isArray(raw.classIds) ||
       !raw.classIds.length ||
@@ -184,21 +187,13 @@
       duration > 180
     )
       reject("请设置有效的时间和答题时长。");
-    const pool = db.words
-      .filter((w) => wordAvailableFor(w, raw.program, raw.subject))
-      .map((w) => ({ ...w, subject: raw.subject }));
-    const selected = [...new Set(raw.wordIds || [])].map((id) =>
-      pool.find((w) => w.id === id),
-    );
-    if (!selected.length || selected.some((w) => !w))
-      reject("请选择有效场景词汇。");
     if (!["mixed", "en-zh", "zh-en", "choice"].includes(raw.mode))
       reject("请选择题型。");
     const task = {
       id: uid(),
       title: raw.title.trim(),
       program: raw.program,
-      subject: raw.subject,
+      subject: selection.subject,
       mode: raw.mode,
       questionType:
         raw.questionType || (raw.mode === "choice" ? "choice" : "fill"),
@@ -208,7 +203,13 @@
       closesAt,
       duration,
       createdAt: Date.now(),
-      questions: buildQuestions(selected, raw.mode, pool, raw.questionType),
+      selection: selection.metadata,
+      questions: buildQuestions(
+        selection.words,
+        raw.mode,
+        selection.pool,
+        raw.questionType,
+      ),
     };
     db.tasks.unshift(task);
     return taskView(task);

@@ -5101,6 +5101,80 @@ input[type="radio"] {
 }
 
 /* Chosen proposal 05: class-colour board with clear orange actions. */
+.task-single-scope,
+#task-combined-scopes {
+  display: grid;
+  gap: 17px;
+}
+.task-single-scope[hidden],
+#task-combined-scopes[hidden] {
+  display: none;
+}
+.task-scope-card {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 14px 16px;
+  border-radius: 4px;
+  min-width: 0;
+}
+.task-scope-card.selected {
+  border-color: var(--accent-ink);
+}
+.task-scope-heading {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: var(--ink);
+}
+.task-scope-heading.check-item:has(input:checked) {
+  background: transparent;
+  border: 0;
+}
+#task-form > .form-grid > .check-item:has(input:checked) {
+  background: var(--accent-soft);
+  border-color: var(--accent-ink);
+}
+.task-scope-heading small {
+  margin-left: auto;
+  color: var(--muted);
+}
+.task-scope-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 3px;
+}
+.task-scope-groups label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  padding: 8px 11px;
+  font-size: 0.88rem;
+  cursor: pointer;
+  color: var(--ink);
+}
+.task-scope-groups label:has(input:checked) {
+  background: var(--accent-soft);
+  border-color: var(--accent-ink);
+}
+.task-scope-groups label:hover {
+  border-color: var(--accent-ink);
+}
+.task-scope-card > p {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 10px 0 0;
+}
+#task-candidate-details > summary {
+  cursor: pointer;
+  color: var(--ink);
+  padding: 10px 0 15px;
+}
 :root {
   --ink: #30303c;
   --muted: #747482;

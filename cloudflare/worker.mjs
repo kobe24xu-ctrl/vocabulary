@@ -1,3 +1,5 @@
+import { prepareTaskSelection } from "../lib/task-selection.mjs";
+import { scopedTaskTitle, publishedTaskScope } from "../public/task-scopes.js";
 import {
   createExamService,
   examEventStream,
@@ -110,6 +112,7 @@ function taskView(t) {
     title: t.title,
     program: t.program,
     subject: t.subject,
+    ...publishedTaskScope(json(t.selection || "{}"), qs),
     opensAt: t.opens_at,
     closesAt: t.closes_at,
     duration: t.duration,
@@ -426,15 +429,19 @@ function service(env, request, headers = new Headers(SECURITY)) {
     };
   }
   function taskData(owner, b, context) {
+    const selection = prepareTaskSelection(b, context);
     const title = required(
       b?.autoTitle || !b?.title
-        ? automaticTaskTitle(b.program, b.subject, b.wordGroup, SUBJECT_NAMES)
+        ? scopedTaskTitle(
+            b.program,
+            selection.scopes,
+            selection.words.length,
+            SUBJECT_NAMES,
+          )
         : b.title,
       "任务名称",
       120,
     );
-    if (!PROGRAMS.includes(b.program) || !SUBJECTS.includes(b.subject))
-      fail(400, "请选择课程项目和科目。");
     const opens = Date.parse(b.opensAt),
       closes = Date.parse(b.closesAt),
       duration = Number(b.duration);
@@ -455,60 +462,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
       !["choice", "fill"].includes(b.questionType)
     )
       fail(400, "请选择选择题或填空题。");
-    const pool = context.words
-      .filter(
-        (w) =>
-          wordAvailableFor(w, b.program, b.subject) &&
-          Array.isArray(b.classIds) &&
-          b.classIds.length > 0 &&
-          b.classIds.every((cid) =>
-            wordAvailableToClass(
-              w,
-              context.classes.find((c) => c.id === cid),
-            ),
-          ),
-      )
-      .map((w) => ({ ...w, subject: b.subject }));
-    if (
-      !Array.isArray(b.wordIds) ||
-      !b.wordIds.length ||
-      b.wordIds.length > 100
-    )
-      fail(400, "每份任务请选择 1–100 个词汇。");
-    const words = [...new Set(b.wordIds)].map((wid) =>
-      pool.find((w) => w.id === wid),
-    );
-    if (words.some((w) => !w)) fail(400, "存在不属于该科目或课程的词汇。");
-    if (
-      b.wordGroup &&
-      b.wordGroup !== "all" &&
-      words.some((w) => !w.groups?.includes(b.wordGroup))
-    )
-      fail(400, "词汇与所选分组不一致。");
-    if (
-      !Array.isArray(b.classIds) ||
-      !b.classIds.length ||
-      b.classIds.length > 100
-    )
-      fail(400, "请选择 1–100 个班级。");
     const classIds = [...new Set(b.classIds)];
-    if (
-      classIds.some(
-        (cid) =>
-          !context.classes.some((c) => c.id === cid && c.program === b.program),
-      )
-    )
-      fail(400, "请选择当前项目下的有效班级。");
-    if (
-      classIds.some((cid) => {
-        const c = context.classes.find((c) => c.id === cid);
-        return (
-          c.courses?.length &&
-          !c.courses.some((course) => course.subject === b.subject)
-        );
-      })
-    )
-      fail(400, "所选科目未配置给该班级，请先调整班级课程。");
     let audience = "all";
     if (b.audience !== "all") {
       if (
@@ -530,7 +484,12 @@ function service(env, request, headers = new Headers(SECURITY)) {
     }
     let questions;
     try {
-      questions = buildQuestions(words, b.mode, pool, b.questionType);
+      questions = buildQuestions(
+        selection.words,
+        b.mode,
+        selection.pool,
+        b.questionType,
+      );
     } catch (e) {
       fail(400, e.message);
     }
@@ -539,7 +498,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
       owner_id: owner,
       title,
       program: b.program,
-      subject: b.subject,
+      subject: selection.subject,
       opens_at: opens,
       closes_at: closes,
       duration,
@@ -547,11 +506,12 @@ function service(env, request, headers = new Headers(SECURITY)) {
       questions: jsonString(questions),
       created_at: Date.now(),
       class_ids: jsonString(classIds),
+      selection: jsonString(selection.metadata),
     };
     return {
       task,
       sql: statement(
-        "INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO tasks(id,owner_id,title,program,subject,opens_at,closes_at,duration,audience,questions,created_at,class_ids,selection) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ...[
           "id",
           "owner_id",
@@ -565,6 +525,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
           "questions",
           "created_at",
           "class_ids",
+          "selection",
         ].map((k) => task[k]),
       ),
     };
@@ -748,7 +709,7 @@ function service(env, request, headers = new Headers(SECURITY)) {
     past.task.created_at = now - 2 * 86400000;
     sql.push(
       statement(
-        "INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO tasks(id,owner_id,title,program,subject,opens_at,closes_at,duration,audience,questions,created_at,class_ids) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         ...[
           "id",
           "owner_id",

@@ -1,4 +1,8 @@
-import { enrichGradeRows, gradeAverage } from "./analytics.js";
+import {
+  enrichGradeRows,
+  gradeAverage,
+  collapseGradeRows,
+} from "./analytics.js";
 
 export const REPORT_COLORS = [
   "#365f80",
@@ -30,6 +34,7 @@ export function assessmentRows(results, tasks, words, classes) {
   });
 }
 export function gradeMetrics(rows, at = Date.now()) {
+  rows = collapseGradeRows(rows);
   const done = rows.filter(completedGrade);
   const due = rows.filter((r) => completedGrade(r) || r.examAt <= at);
   return {
@@ -58,7 +63,10 @@ export function assessmentGroups(rows) {
       rows: records,
       at: records[0].examAt,
       title: records[0].taskTitle,
-      subject: records[0].subject,
+      subject:
+        new Set(records.map((r) => r.subject)).size > 1
+          ? "Mixed"
+          : records[0].subject,
       groups: [...new Set(records.flatMap((r) => r.groups))],
       ...gradeMetrics(records),
     }))
@@ -116,6 +124,7 @@ export function studentGroups(rows, students = []) {
     .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
 }
 export function scoreBins(rows) {
+  rows = collapseGradeRows(rows);
   const done = rows.filter(completedGrade);
   return [
     {

@@ -1,3 +1,5 @@
+import { prepareTaskSelection } from "./lib/task-selection.mjs";
+import { scopedTaskTitle, publishedTaskScope } from "./public/task-scopes.js";
 import {
   createExamService,
   examEventStream,
@@ -75,6 +77,10 @@ const one = (sql, ...p) => db.prepare(sql).get(...p);
 const all = (sql, ...p) => db.prepare(sql).all(...p);
 const run = (sql, ...p) => db.prepare(sql).run(...p);
 // Additive migration: preserve existing students, attempts and mistake records.
+if (
+  !all("PRAGMA table_info(tasks)").some((column) => column.name === "selection")
+)
+  db.exec("ALTER TABLE tasks ADD COLUMN selection TEXT NOT NULL DEFAULT '{}'");
 if (
   !all("PRAGMA table_info(users)").some((column) => column.name === "username")
 )
@@ -383,15 +389,22 @@ function studentCreate(owner, raw) {
   return { id: studentId, name, program: cls.program, classId: cls.id, invite };
 }
 function taskCreate(owner, b) {
+  const selection = prepareTaskSelection(b, {
+    words: wordsFor(owner),
+    classes: classViews(owner),
+  });
   const title = required(
     b.autoTitle || !b.title
-      ? automaticTaskTitle(b.program, b.subject, b.wordGroup, SUBJECT_NAMES)
+      ? scopedTaskTitle(
+          b.program,
+          selection.scopes,
+          selection.words.length,
+          SUBJECT_NAMES,
+        )
       : b.title,
     "任务名称",
     120,
   );
-  if (!PROGRAMS.includes(b.program) || !SUBJECTS.includes(b.subject))
-    fail(400, "请选择课程项目和科目。");
   const opens = Date.parse(b.opensAt),
     closes = Date.parse(b.closesAt),
     duration = Number(b.duration);
@@ -412,55 +425,7 @@ function taskCreate(owner, b) {
     !["choice", "fill"].includes(b.questionType)
   )
     fail(400, "请选择选择题或填空题。");
-  const selectedClasses = classViews(owner).filter((c) =>
-    b.classIds?.includes(c.id),
-  );
-  const pool = wordsFor(owner)
-    .filter(
-      (w) =>
-        wordAvailableFor(w, b.program, b.subject) &&
-        selectedClasses.length > 0 &&
-        selectedClasses.every((c) => wordAvailableToClass(w, c)),
-    )
-    .map((w) => ({ ...w, subject: b.subject }));
-  if (!Array.isArray(b.wordIds) || !b.wordIds.length || b.wordIds.length > 100)
-    fail(400, "每份任务请选择 1–100 个词汇。");
-  const selected = [...new Set(b.wordIds)].map((wid) =>
-    pool.find((w) => w.id === wid),
-  );
-  if (selected.some((w) => !w)) fail(400, "存在不属于该科目或课程的词汇。");
-  if (
-    b.wordGroup &&
-    b.wordGroup !== "all" &&
-    selected.some((w) => !w.groups?.includes(b.wordGroup))
-  )
-    fail(400, "词汇与所选分组不一致。");
-  if (!Array.isArray(b.classIds) || b.classIds.length > 100)
-    fail(400, "请选择 1–100 个班级。");
   const classIds = [...new Set(b.classIds)];
-  if (
-    !classIds.length ||
-    classIds.some(
-      (cid) =>
-        !one(
-          "SELECT id FROM classes WHERE id=? AND owner_id=? AND program=?",
-          cid,
-          owner,
-          b.program,
-        ),
-    )
-  )
-    fail(400, "请选择当前项目下的有效班级。");
-  if (
-    classIds.some((cid) => {
-      const courses = all(
-        "SELECT subject FROM class_courses WHERE class_id=?",
-        cid,
-      );
-      return courses.length && !courses.some((c) => c.subject === b.subject);
-    })
-  )
-    fail(400, "所选科目未配置给该班级，请先调整班级课程。");
   let audience = "all";
   if (b.audience !== "all") {
     if (
@@ -491,15 +456,20 @@ function taskCreate(owner, b) {
     )
       fail(400, "所选学生不属于指定班级。");
   }
-  const questions = buildQuestions(selected, b.mode, pool, b.questionType);
+  const questions = buildQuestions(
+    selection.words,
+    b.mode,
+    selection.pool,
+    b.questionType,
+  );
   const tid = id();
   run(
-    "INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO tasks(id,owner_id,title,program,subject,opens_at,closes_at,duration,audience,questions,created_at,class_ids,selection) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
     tid,
     owner,
     title,
     b.program,
-    b.subject,
+    selection.subject,
     opens,
     closes,
     duration,
@@ -507,6 +477,7 @@ function taskCreate(owner, b) {
     jsonString(questions),
     Date.now(),
     jsonString(classIds),
+    jsonString(selection.metadata),
   );
   return taskView(one("SELECT * FROM tasks WHERE id=?", tid));
 }
@@ -522,6 +493,7 @@ function taskView(t) {
     title: t.title,
     program: t.program,
     subject: t.subject,
+    ...publishedTaskScope(json(t.selection || "{}"), qs),
     opensAt: t.opens_at,
     closesAt: t.closes_at,
     duration: t.duration,
@@ -655,7 +627,7 @@ function demoCreate(req, res) {
   const tid = id();
   const qs = buildQuestions(pool.slice(0, 6), "mixed", pool);
   run(
-    "INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO tasks(id,owner_id,title,program,subject,opens_at,closes_at,duration,audience,questions,created_at,class_ids) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     tid,
     owner,
     "市场机制与经济决策",
