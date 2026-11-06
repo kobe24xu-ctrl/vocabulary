@@ -5181,9 +5181,14 @@ body {
   font-weight: 400;
   border: 0;
 }
-.nav button:hover {
+.nav button:hover:not(.active),
+.nav button:focus-visible {
   color: var(--ink);
   background: #f3f1ee;
+}
+.nav button:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
 }
 .nav button.active {
   color: var(--ink);
