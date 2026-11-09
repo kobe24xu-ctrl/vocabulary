@@ -280,6 +280,28 @@ for (const backend of (process.env.SHARED_BACKENDS || "node,worker").split(
           await teacher.ok("/api/words", "POST", { words: fixtures })
         ).words;
         await t.test(
+          "vocabulary download source stays teacher-only and scoped to its owner",
+          async () => {
+            assert.equal(
+              (await new Client(runtime.base).call("/api/words")).status,
+              401,
+            );
+            assert.equal((await student.call("/api/words")).status, 403);
+            const words = (await teacher.ok("/api/words")).words;
+            assert.ok(
+              imported.every((w) => words.some((row) => row.id === w.id)),
+            );
+            assert.ok(
+              words.every(
+                (w) =>
+                  !Object.hasOwn(w, "password") &&
+                  !Object.hasOwn(w, "inviteHash") &&
+                  !Object.hasOwn(w, "username"),
+              ),
+            );
+          },
+        );
+        await t.test(
           "weekly vocabulary is available without exams and follows the student's class",
           async () => {
             assert.equal((await student.ok("/api/tasks")).tasks.length, 0);

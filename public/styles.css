@@ -6398,3 +6398,20 @@ body {
     font-size: 0.88rem;
   }
 }
+
+/* Teacher vocabulary export uses the same responsive course choices. */
+.export-word-summary {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: var(--accent-soft);
+  color: var(--ink);
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+#vocabulary-export-form .direct-choice-list {
+  max-width: 100%;
+}
+#vocabulary-export-form .direct-choice {
+  white-space: normal;
+  min-width: 0;
+}

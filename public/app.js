@@ -1,3 +1,9 @@
+import {
+  exportableWords,
+  buildVocabularyWorkbook,
+  vocabularyExportFilename,
+  VOCABULARY_XLSX_TYPE,
+} from "./vocabulary-export.js";
 import { MIXED_SUBJECT, taskSubjects, scopedTaskTitle } from "./task-scopes.js";
 import {
   assessmentRows,
@@ -976,7 +982,7 @@ function wordsView() {
   const header = heading(
     "课程词库",
     "先选择项目与科目，再按教学周或Topic查阅词汇。",
-    `<button class="btn btn-light" data-action="import-words">${icon("upload")}批量导入</button><button class="btn btn-primary" data-action="add-word">${icon("plus")}添加词汇</button>`,
+    `<button class="btn btn-light" data-action="export-words">${icon("download")}导出单词</button><button class="btn btn-light" data-action="import-words">${icon("upload")}批量导入</button><button class="btn btn-primary" data-action="add-word">${icon("plus")}添加词汇</button>`,
   );
   const controls =
     program === "all"
@@ -2444,13 +2450,74 @@ function csv(rows) {
       .join("\r\n")
   );
 }
+function exportSubjects(program) {
+  return state.config.subjects.filter(
+    (subject) => exportableWords(state.words, program, subject).length,
+  );
+}
+function updateVocabularyExport({ keepSubject = true } = {}) {
+  const form = $("#vocabulary-export-form");
+  if (!form) return;
+  const program = form.elements.program.value,
+    select = form.elements.subject;
+  const subjects = exportSubjects(program),
+    previous = select.value;
+  select.innerHTML =
+    option("", "请选择科目", "") +
+    subjects.map((s) => option(s, nameSubject(s))).join("");
+  select.value =
+    keepSubject && subjects.includes(previous)
+      ? previous
+      : subjects.includes(state.filter.subject)
+        ? state.filter.subject
+        : subjects.length === 1
+          ? subjects[0]
+          : "";
+  select.disabled = !subjects.length;
+  updateVocabularyExportCount();
+}
+function updateVocabularyExportCount() {
+  const form = $("#vocabulary-export-form");
+  if (!form) return;
+  const words = exportableWords(
+    state.words,
+    form.elements.program.value,
+    form.elements.subject.value,
+  );
+  $("#vocabulary-export-count").textContent = form.elements.subject.value
+    ? `当前词库：${words.length} 条记录。下载时会读取最新完整词库。`
+    : "先选择项目与科目。";
+  const button = document.querySelector(
+    '[form="vocabulary-export-form"][type="submit"]',
+  );
+  if (button) button.disabled = !words.length;
+}
+function openVocabularyExport() {
+  const programs = [...state.config.programs, "通用示例"].filter(
+    (p) => exportSubjects(p).length,
+  );
+  const program = programs.includes(state.filter.program)
+    ? state.filter.program
+    : programs[0] || "";
+  modal(
+    "导出单词",
+    "选择项目与科目，下载完整 Excel 词库。",
+    `<form id="vocabulary-export-form"><div class="form-grid"><label class="form-field full"><span>课程项目</span><select name="program" data-change="export-program" required>${programs.map((p) => option(p, p, program)).join("") || '<option value="">暂无已录入词库</option>'}</select></label><label class="form-field full"><span>科目</span><select name="subject" data-change="export-subject" required></select></label><div class="full export-word-summary" id="vocabulary-export-count" role="status"></div><p class="full privacy-note">包含释义、词性与用法、双语例句、全部周次 / Topic、可接受答案及来源信息。导出全部词条，不受搜索、周次筛选或页面显示条数限制。</p></div></form>`,
+    `<button class="btn btn-light" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit" form="vocabulary-export-form">${icon("download")}下载 Excel</button>`,
+    true,
+  );
+  updateVocabularyExport();
+}
 function download(name, contents, type = "text/csv;charset=utf-8") {
   const url = URL.createObjectURL(new Blob([contents], { type }));
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
+  a.hidden = true;
+  document.body.append(a);
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 function parseCSV(text) {
   text = text.replace(/^\ufeff/, "");
@@ -3304,6 +3371,7 @@ document.addEventListener("click", async (e) => {
       );
       return;
     }
+    if (action === "export-words") return openVocabularyExport();
     if (action === "word-template") {
       download(
         "场景词库导入模板.csv",
@@ -3532,6 +3600,31 @@ document.addEventListener("submit", async (e) => {
     form.querySelector("[type=submit]");
   if (submit) submit.disabled = true;
   try {
+    if (form.id === "vocabulary-export-form") {
+      if (state.user?.role !== "teacher")
+        throw new Error("请使用老师账号导出词库。");
+      const latest = await api("/api/words");
+      const words = exportableWords(latest.words, data.program, data.subject);
+      const exportedAt = Date.now();
+      const file = buildVocabularyWorkbook(words, {
+        program: data.program,
+        subjectName: nameSubject(data.subject),
+        exportedAt,
+      });
+      download(
+        vocabularyExportFilename(
+          data.program,
+          nameSubject(data.subject),
+          exportedAt,
+        ),
+        file,
+        VOCABULARY_XLSX_TYPE,
+      );
+      state.words = latest.words;
+      closeModal();
+      toast(`已导出 ${words.length} 条词汇记录。`);
+      return;
+    }
     if (form.id === "retake-form") {
       const taskId = data.taskId;
       const result = await post(`/api/tasks/${taskId}/retakes`, {
@@ -3882,6 +3975,9 @@ document.addEventListener("change", (e) => {
     }
     $("#main-view").innerHTML = content();
   }
+  if (el.dataset.change === "export-program")
+    updateVocabularyExport({ keepSubject: false });
+  if (el.dataset.change === "export-subject") updateVocabularyExportCount();
   if (el.dataset.change === "schedule") {
     state.scheduleMonth = el.form.elements.opensAt.value.slice(0, 7);
     renderTaskCalendar();

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(join(root, path), "utf8");
 let app = read("public/app.js")
+  .replace(/^import[^;]*from "\.\/vocabulary-export\.js";\n/m, "")
   .replace(/^import[^;]*from "\.\/task-scopes\.js";\n/m, "")
   .replace(/^import[^;]*from "\.\/reporting\.js";\n/m, "")
   .replace(/^import[^;]*from "\.\/charts\.js";\n/m, "")
@@ -74,6 +75,10 @@ const taskScopeSource = ["public/task-scopes.js", "lib/task-selection.mjs"]
       .replaceAll("export function ", "function "),
   )
   .join("\n");
+const exportSource = read("public/vocabulary-export.js")
+  .replace(/^import[\s\S]*?;\n/gm, "")
+  .replaceAll("export const ", "const ")
+  .replaceAll("export function ", "function ");
 const speech = read("public/speech.js")
   .replaceAll("export function ", "function ")
   .replaceAll("export async function ", "async function ");
@@ -85,7 +90,7 @@ const demoStyles = read("public/styles.css").replace(
   `url(data:font/woff2;base64,${readFileSync(join(root, "public/classroom-xihei.woff2")).toString("base64")})`,
 );
 const script =
-  `const DEMO_FILE_BASE=location.href.split(/[?#]/)[0];\nconst randomInt=max=>Math.floor(Math.random()*max);\n${shared}\n${taskScopeSource}\n${practiceQuestions}\n${read("scripts/demo-runtime.js")}\n${speech}\n${app}`.replace(
+  `const DEMO_FILE_BASE=location.href.split(/[?#]/)[0];\nconst randomInt=max=>Math.floor(Math.random()*max);\n${shared}\n${taskScopeSource}\n${exportSource}\n${practiceQuestions}\n${read("scripts/demo-runtime.js")}\n${speech}\n${app}`.replace(
     /<\/script/gi,
     "<\\/script",
   );
