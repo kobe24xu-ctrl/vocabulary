@@ -1,9 +1,10 @@
-const CACHE = "lexiclass-shell-v34";
+const CACHE = "lexiclass-shell-v35";
 const SHELL = [
   "/",
   "/styles.css",
   "/classroom-xihei.woff2",
   "/app.js",
+  "/answer-sync.js",
   "/scheduling.js",
   "/task-scopes.js",
   "/vocabulary-export.js",

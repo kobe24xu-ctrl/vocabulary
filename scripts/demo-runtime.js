@@ -496,11 +496,18 @@
     for (const [k, v] of Object.entries(body.answers))
       if (!ids.has(k) || typeof v !== "string" || v.length > 2000)
         reject("答案格式不正确。");
-    a.answers = body.answers;
+    a.answers = { ...a.answers, ...body.answers };
     if (m[2] && method === "POST")
       return demoPracticeDetail(finishPractice(a, a.answers));
-    if (method === "PATCH")
-      return { savedAt: Date.now(), serverTime: Date.now() };
+    if (method === "PATCH") {
+      a.answerRevision = (a.answerRevision || 0) + 1;
+      return {
+        savedAt: Date.now(),
+        serverTime: Date.now(),
+        answers: a.answers,
+        answerRevision: a.answerRevision,
+      };
+    }
     reject("不支持此操作。", 405);
   }
 
@@ -964,10 +971,16 @@
         return { attempt: attemptView(finish(a, a.answers, true)) };
       if (!body.answers || typeof body.answers !== "object")
         reject("答案格式不正确。");
-      a.answers = body.answers;
+      a.answers = { ...a.answers, ...body.answers };
       if (attemptRoute[2])
         return { attempt: attemptView(finish(a, a.answers)) };
-      return { savedAt: Date.now(), serverTime: Date.now() };
+      a.answerRevision = (a.answerRevision || 0) + 1;
+      return {
+        savedAt: Date.now(),
+        serverTime: Date.now(),
+        answers: a.answers,
+        answerRevision: a.answerRevision,
+      };
     }
     if (path === "/api/results") {
       requireUser("teacher");

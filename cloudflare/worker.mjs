@@ -1,3 +1,7 @@
+import {
+  answerRevisionBase,
+  answerRevisionConflict,
+} from "../lib/answer-revision.mjs";
 import { prepareTaskSelection } from "../lib/task-selection.mjs";
 import {
   scopedTaskTitle,
@@ -139,6 +143,7 @@ function attemptView(a) {
     taskId: a.task_id,
     ...attemptTiming(a.started_at, a.submitted_at, a.deadline),
     deadline: a.deadline,
+    answerRevision: a.answer_revision || 0,
     answers: json(a.answers),
     submittedAt: a.submitted_at,
     score: a.score,
@@ -1381,21 +1386,32 @@ function service(env, request, headers = new Headers(SECURITY)) {
       if (attemptRoute[2] && method === "POST")
         return { attempt: await finalize(a, answers) };
       if (method !== "PATCH" || attemptRoute[2]) fail(405, "请求方法不正确。");
+      const baseRevision = answerRevisionBase(b, a);
+      const merged = { ...json(a.answers), ...answers };
       const saved = await run(
-        "UPDATE attempts SET answers=? WHERE id=? AND submitted_at IS NULL AND deadline>?",
-        jsonString(answers),
+        "UPDATE attempts SET answers=?,answer_revision=answer_revision+1 WHERE id=? AND submitted_at IS NULL AND deadline>? AND answer_revision=?",
+        jsonString(merged),
         a.id,
         Date.now(),
+        baseRevision,
       );
       if (!saved.meta.changes) {
         const current = await one("SELECT * FROM attempts WHERE id=?", a.id);
-        return {
-          attempt: await finalize(current, json(current.answers), true),
-          expired: true,
-        };
+        if (current.submitted_at || current.deadline <= Date.now())
+          return {
+            attempt: await finalize(current, json(current.answers), true),
+            expired: true,
+          };
+        return answerRevisionConflict(current);
       }
-      return { savedAt: Date.now(), serverTime: Date.now() };
+      return {
+        savedAt: Date.now(),
+        serverTime: Date.now(),
+        answerRevision: baseRevision + 1,
+        answers: merged,
+      };
     }
+
     if (path === "/api/results" && method === "GET") {
       teacher(u);
       await sweep(u);

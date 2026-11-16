@@ -1,3 +1,4 @@
+import { createAnswerSync } from "./answer-sync.js";
 import {
   exportableWords,
   buildVocabularyWorkbook,
@@ -235,7 +236,9 @@ function enhanceChoiceControls() {
     list.classList.toggle("needs-selection", select.required && !select.value);
   });
 }
-new MutationObserver(enhanceChoiceControls).observe(document.body, {
+new MutationObserver(() => {
+  if (!state.attempt) enhanceChoiceControls();
+}).observe(document.body, {
   childList: true,
   subtree: true,
 });
@@ -344,8 +347,7 @@ const state = {
 let modalOpen = false,
   saveTimer,
   saveQueue = Promise.resolve(),
-  saveVersion = 0,
-  savedVersion = 0,
+  answerSync = null,
   submitting = false,
   reviewing = null;
 const now = () => Date.now() + state.serverOffset;
@@ -392,24 +394,42 @@ function toast(message, error = false) {
   }, 4500);
 }
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    credentials: "same-origin",
-    ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
-  });
-  let data;
+  const { timeoutMs, ...requestOptions } = options;
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
   try {
-    data = await response.json();
-  } catch {
-    throw new Error("服务器响应异常，请检查网络后重试。");
-  }
-  if (!response.ok) {
-    const error = new Error(data.error || "请求失败");
-    error.status = response.status;
+    const response = await fetch(path, {
+      credentials: "same-origin",
+      ...requestOptions,
+      ...(controller ? { signal: controller.signal } : {}),
+      headers: {
+        "Content-Type": "application/json",
+        ...requestOptions.headers,
+      },
+    });
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error("服务器响应异常，请检查网络后重试。");
+    }
+    if (!response.ok) {
+      const error = new Error(data.error || "请求失败");
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+    if (data.serverTime) state.serverOffset = data.serverTime - Date.now();
+    return data;
+  } catch (error) {
+    if (controller?.signal.aborted)
+      throw new Error("请求超时，答案草稿已保留，请恢复网络后重试。");
     throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  if (data.serverTime) state.serverOffset = data.serverTime - Date.now();
-  return data;
 }
 const post = (path, value = {}) =>
   api(path, { method: "POST", body: JSON.stringify(value) });
@@ -646,10 +666,23 @@ async function enterAlertExam(id) {
   window.scrollTo(0, 0);
 }
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) stopExamAlerts();
-  else syncExamAlerts();
+  if (document.hidden) {
+    readAnswers();
+    queueSave().catch(() => {});
+    stopExamAlerts();
+  } else syncExamAlerts();
 });
-window.addEventListener("pagehide", stopExamAlerts);
+window.addEventListener("pagehide", () => {
+  readAnswers();
+  answerSync?.stop();
+  stopExamAlerts();
+});
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted && state.attempt) {
+    beginAnswerSync(state.attempt);
+    answerSync.report();
+  }
+});
 
 function shell() {
   const teacher = state.user.role === "teacher";
@@ -1616,6 +1649,7 @@ function enterPractice(data) {
   state.requestedExamId = null;
   sessionStorage.removeItem("lexiclass-exam");
   if (data.attempt.submittedAt) {
+    clearAnswerDraft(data.attempt.id, !!data.task.practice);
     state.examResult = { attempt: data.attempt, task: data.task };
     state.attempt = null;
     sessionStorage.removeItem("lexiclass-practice");
@@ -1623,9 +1657,7 @@ function enterPractice(data) {
     state.attempt = data;
     state.examResult = null;
     sessionStorage.setItem("lexiclass-practice", data.attempt.id);
-    saveVersion = 0;
-    savedVersion = 0;
-    saveQueue = Promise.resolve();
+    beginAnswerSync(data);
     submitting = false;
   }
   render();
@@ -1773,13 +1805,20 @@ function currentQuestionIndex() {
   }
   return state.examIndex || 0;
 }
-function refreshQuestionNavigator() {
+function refreshQuestionNavigator(changedIds = null) {
   const a = state.attempt;
   if (!a) return;
   const answered = Object.values(a.attempt.answers).filter((v) =>
     v.trim(),
   ).length;
-  $$("#question-navigation [data-question]").forEach((b) => {
+  const buttons = changedIds
+    ? changedIds
+        .map((id) => a.questions.findIndex((q) => q.id === id))
+        .filter((index) => index >= 0)
+        .map((index) => $(`#question-navigation [data-question="${index}"]`))
+        .filter(Boolean)
+    : $$("#question-navigation [data-question]");
+  buttons.forEach((b) => {
     const index = Number(b.dataset.question),
       q = a.questions[index];
     const done = !!a.attempt.answers[q.id]?.trim();
@@ -1964,6 +2003,7 @@ function render() {
   if (state.attempt) {
     tick();
     refreshQuestionNavigator();
+    answerSync?.report();
   }
 }
 async function load({ background = false } = {}) {
@@ -2579,66 +2619,118 @@ async function startTask(tid) {
   sessionStorage.removeItem("lexiclass-practice");
   const data = await post(`/api/tasks/${tid}/start`);
   if (data.attempt.submittedAt) {
+    clearAnswerDraft(data.attempt.id, !!data.task.practice);
     state.examResult = { attempt: data.attempt, task: data.task };
     state.attempt = null;
   } else {
     state.attempt = data;
     state.examResult = null;
-    saveVersion = 0;
-    savedVersion = 0;
-    saveQueue = Promise.resolve();
+    beginAnswerSync(data);
   }
   render();
   window.scrollTo(0, 0);
 }
+function clearAnswerDraft(attemptId, practice = false) {
+  const key = `lexiclass-answer-draft:v1:${state.user?.id}:${practice ? "practice" : "exam"}:${attemptId}`;
+  for (const name of ["localStorage", "sessionStorage"]) {
+    try {
+      globalThis[name]?.removeItem(key);
+    } catch {}
+  }
+}
+function beginAnswerSync(data) {
+  answerSync?.stop();
+  saveQueue = Promise.resolve();
+  answerSync = createAnswerSync({
+    userId: state.user.id,
+    attemptId: data.attempt.id,
+    taskId: data.task.id,
+    practice: !!data.task.practice,
+    deadline: data.attempt.deadline,
+    questionIds: data.questions.map((q) => q.id),
+    answers: data.attempt.answers,
+    answerRevision: data.attempt.answerRevision || 0,
+    now,
+    send: (body, signal) =>
+      api(attemptEndpoint(data), {
+        method: "PATCH",
+        signal,
+        body: JSON.stringify(body),
+      }),
+    changed: (answers, { remote, ids }) => {
+      if (state.attempt !== data) return;
+      data.attempt.answers = answers;
+      if (remote)
+        for (const id of ids)
+          for (const input of $$(
+            `#exam-form input[name="${CSS.escape(id)}"]`,
+          )) {
+            if (input.type === "radio")
+              input.checked = answers[id] === input.value;
+            else if (input.value !== (answers[id] || ""))
+              input.value = answers[id] || "";
+          }
+      refreshQuestionNavigator(ids);
+    },
+    status: (report) => {
+      if (state.attempt !== data || submitting) return;
+      data.attempt.answerRevision = report.revision;
+      if (!report.dirty) return saveStatus("已保存到服务器");
+      const draft = report.localSaved
+        ? "本机草稿已保留"
+        : "本机草稿不可用，请保持页面打开";
+      saveStatus(
+        report.phase === "error"
+          ? `上传未完成，${draft}；恢复网络后自动重试`
+          : `${draft}，正在上传答案…`,
+        report.phase === "error" || !report.localSaved,
+      );
+    },
+    completed: (attempt) => {
+      if (state.attempt === data) completeExam(attempt);
+    },
+  });
+  data.attempt.answers = answerSync.answers;
+  if (answerSync.restored)
+    toast(`已恢复本机保存的 ${answerSync.restored} 题答案，正在同步。`);
+  if (answerSync.dirty)
+    setTimeout(() => {
+      if (state.attempt === data) queueSave().catch(() => {});
+    }, 0);
+}
+function recordAnswer(input) {
+  if (
+    !state.attempt ||
+    !answerSync ||
+    submitting ||
+    !input.name ||
+    (input.type === "radio" && !input.checked)
+  )
+    return;
+  answerSync.set(input.name, input.value);
+}
 function readAnswers() {
   if (!state.attempt || !$("#exam-form")) return;
-  const data = new FormData($("#exam-form"));
-  state.attempt.attempt.answers = {
-    ...state.attempt.attempt.answers,
-    ...Object.fromEntries(data.entries()),
-  };
+  for (const input of $$("#exam-form .question-card:not([hidden]) input"))
+    recordAnswer(input);
 }
 function saveStatus(text, warning = false) {
   const el = $("#save-indicator");
   if (el) {
     el.className = `save-indicator ${warning ? "warning" : ""}`;
-    el.textContent = text;
+    if (el.textContent !== text) el.textContent = text;
   }
 }
 function queueSave() {
-  if (!state.attempt || submitting) return saveQueue;
-  const attempt = state.attempt,
-    version = saveVersion,
-    answers = { ...attempt.attempt.answers };
-  saveStatus("正在保存…");
-  saveQueue = saveQueue
-    .catch(() => {})
-    .then(async () => {
-      if (state.attempt !== attempt) return;
-      try {
-        const r = await api(attemptEndpoint(attempt), {
-          method: "PATCH",
-          body: JSON.stringify({ answers }),
-        });
-        if (state.attempt !== attempt) return;
-        if (r.attempt?.submittedAt) {
-          completeExam(r.attempt);
-          return;
-        }
-        savedVersion = Math.max(savedVersion, version);
-        saveStatus(
-          savedVersion === saveVersion ? "已保存到服务器" : "正在保存最新答案…",
-        );
-      } catch (e) {
-        saveStatus("保存失败，请恢复网络后重试", true);
-        throw e;
-      }
-    });
+  if (!state.attempt || submitting || !answerSync) return saveQueue;
+  saveQueue = answerSync.flush();
   return saveQueue;
 }
 function completeExam(a) {
   if (!state.attempt) return;
+  answerSync?.clear();
+  answerSync?.stop();
+  answerSync = null;
   clearTimeout(autoQuestionTimer);
   try {
     sessionStorage.removeItem(questionPositionKey());
@@ -2678,20 +2770,26 @@ async function submitExam() {
   submitting = true;
   clearTimeout(saveTimer);
   const attempt = state.attempt;
+  answerSync?.stop();
+  $$("#exam-form input").forEach((input) => (input.disabled = true));
   $("#submit-button")?.setAttribute("disabled", "");
   saveStatus("正在提交，请保持联网…");
   try {
     await saveQueue.catch(() => {});
     if (state.attempt !== attempt) return;
-    const r = await post(`${attemptEndpoint(attempt)}/submit`, {
-      answers: attempt.attempt.answers,
+    const r = await api(`${attemptEndpoint(attempt)}/submit`, {
+      method: "POST",
+      timeoutMs: 20000,
+      body: JSON.stringify({ answers: attempt.attempt.answers }),
     });
     if (state.attempt !== attempt) return;
     completeExam(r.attempt);
   } catch (e) {
     submitting = false;
+    $$("#exam-form input").forEach((input) => (input.disabled = false));
+    beginAnswerSync(attempt);
     $("#submit-button")?.removeAttribute("disabled");
-    saveStatus("提交失败，正在保留本页答案；请联网重试", true);
+    saveStatus("提交未完成，本机草稿已保留；请联网重试", true);
     toast(e.message, true);
   }
 }
@@ -3867,17 +3965,7 @@ document.addEventListener("input", (e) => {
     return;
   }
   if (el.closest("#exam-form")) {
-    readAnswers();
-    refreshQuestionNavigator();
-    saveVersion++;
-    saveStatus("尚有答案等待保存…");
-    const count = Object.values(state.attempt.attempt.answers).filter((v) =>
-      v.trim(),
-    ).length;
-    $("#answered-count").textContent =
-      `已作答 ${count} / ${state.attempt.questions.length} 题`;
-    $("#exam-progress-fill").style.width =
-      `${(count / state.attempt.questions.length) * 100}%`;
+    recordAnswer(el);
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => queueSave().catch(() => {}), 450);
   }
@@ -3912,8 +4000,7 @@ document.addEventListener("change", (e) => {
     const index = Number(
       el.closest("[data-question-index]").dataset.questionIndex,
     );
-    readAnswers();
-    refreshQuestionNavigator();
+    recordAnswer(el);
     clearTimeout(saveTimer);
     queueSave().catch(() => {});
     clearTimeout(autoQuestionTimer);
@@ -4063,7 +4150,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 window.addEventListener("beforeunload", (e) => {
-  if (state.attempt && saveVersion > savedVersion) {
+  if (state.attempt && answerSync?.dirty) {
     e.preventDefault();
     e.returnValue = "";
   }
@@ -4077,7 +4164,7 @@ window.addEventListener("offline", () => {
     Object.assign(document.createElement("div"), {
       className: "connection-banner",
       textContent:
-        "网络已断开。请保持答题页打开，恢复网络后会重试保存；服务端仍会按时交卷。",
+        "网络已断开。答案将保留本机草稿，联网后自动同步；考试截止时间仍以服务器为准。",
     }),
   );
 });
@@ -4088,7 +4175,7 @@ window.addEventListener("online", () => {
 });
 setInterval(tick, 1000);
 setInterval(() => {
-  if (state.attempt && saveVersion > savedVersion && !submitting)
+  if (state.attempt && answerSync?.dirty && !submitting)
     queueSave().catch(() => {});
 }, 5000);
 setInterval(async () => {

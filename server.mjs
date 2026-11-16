@@ -1,3 +1,7 @@
+import {
+  answerRevisionBase,
+  answerRevisionConflict,
+} from "./lib/answer-revision.mjs";
 import { prepareTaskSelection } from "./lib/task-selection.mjs";
 import {
   scopedTaskTitle,
@@ -131,6 +135,16 @@ db.exec(
     "utf8",
   ),
 );
+for (const table of ["attempts", "practice_attempts"]) {
+  if (
+    !all(`PRAGMA table_info(${table})`).some(
+      (column) => column.name === "answer_revision",
+    )
+  )
+    db.exec(
+      `ALTER TABLE ${table} ADD COLUMN answer_revision INTEGER NOT NULL DEFAULT 0`,
+    );
+}
 const examService = createExamService({
   one,
   all,
@@ -516,6 +530,7 @@ function attemptView(a) {
     taskId: a.task_id,
     ...attemptTiming(a.started_at, a.submitted_at, a.deadline),
     deadline: a.deadline,
+    answerRevision: a.answer_revision || 0,
     answers: json(a.answers),
     submittedAt: a.submitted_at,
     score: a.score,
@@ -1269,8 +1284,27 @@ async function api(req, res, url) {
     if (attemptRoute[2] && method === "POST")
       return { attempt: finalize(a, answers) };
     if (method !== "PATCH") fail(405, "请求方法不正确。");
-    run("UPDATE attempts SET answers=? WHERE id=?", jsonString(answers), a.id);
-    return { savedAt: Date.now(), serverTime: Date.now() };
+    const baseRevision = answerRevisionBase(b, a);
+    const merged = { ...json(a.answers), ...answers };
+    const saved = run(
+      "UPDATE attempts SET answers=?,answer_revision=answer_revision+1 WHERE id=? AND submitted_at IS NULL AND deadline>? AND answer_revision=?",
+      jsonString(merged),
+      a.id,
+      Date.now(),
+      baseRevision,
+    );
+    if (!saved.changes) {
+      const current = one("SELECT * FROM attempts WHERE id=?", a.id);
+      if (current.submitted_at || current.deadline <= Date.now())
+        return { attempt: finalize(current, json(current.answers), true) };
+      return answerRevisionConflict(current);
+    }
+    return {
+      savedAt: Date.now(),
+      serverTime: Date.now(),
+      answerRevision: baseRevision + 1,
+      answers: merged,
+    };
   }
   if (path === "/api/results" && method === "GET") {
     if (u.role !== "teacher") fail(403, "仅教师可查看班级成绩。");
