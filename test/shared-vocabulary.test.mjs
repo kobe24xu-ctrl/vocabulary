@@ -534,7 +534,7 @@ for (const backend of (process.env.SHARED_BACKENDS || "node,worker").split(
                       (await cards.nth(i).textContent()).includes(
                         "新南共用词库",
                       ),
-                      pool[i].program === sourceProgram,
+                      false,
                     );
                   }
                 }

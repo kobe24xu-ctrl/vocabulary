@@ -1060,7 +1060,7 @@ function wordsView() {
       .slice(0, state.wordLimit || 60)
       .map(
         (w) =>
-          `<article class="word-card">${badge(nameSubject(state.filter.subject), "gray")}${program === "UOW 沃隆港预科" && w.program === "UNSW 新南预科" ? badge("新南共用词库") : ""}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p>${wordGrammar(w)}<div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary word-chinese-context">${esc(w.sentenceZh)}</p><footer><span>${esc((w.groups || []).map(libraryGroupLabel).join(" · ") || w.source)}</span></footer></article>`,
+          `<article class="word-card">${badge(nameSubject(state.filter.subject), "gray")}<h3>${esc(w.term)}</h3><p class="translation">${esc(w.translation)}</p>${wordGrammar(w)}<div class="word-sentence">${highlight(w.sentence, w.term)}</div><p class="table-secondary word-chinese-context">${esc(w.sentenceZh)}</p><footer><span>${esc((w.groups || []).map(libraryGroupLabel).join(" · ") || w.source)}</span></footer></article>`,
       )
       .join(
         "",
