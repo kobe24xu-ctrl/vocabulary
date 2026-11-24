@@ -981,7 +981,7 @@ function studentsView() {
 }
 function wordGrammar(word) {
   if (!word.partOfSpeech) return "";
-  return `<div class="word-grammar"><span>${esc(word.partOfSpeech)}</span>${word.partOfSpeechNote ? `<p>${esc(word.partOfSpeechNote)}</p>` : ""}</div>`;
+  return `<div class="word-grammar"><span>${esc(word.partOfSpeech)}</span></div>`;
 }
 function wordSubjects(program) {
   if (program === "all") return state.config.subjects;
